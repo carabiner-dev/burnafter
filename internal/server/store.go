@@ -48,6 +48,28 @@ func (s *Server) Store(ctx context.Context, req *pb.StoreRequest) (*pb.StoreResp
 		log.Printf("Client binary hash: %s", clientHash)
 	}
 
+	// Check secret size limit
+	secretSize := int64(len(req.Secret))
+	if secretSize > s.options.MaxSecretSize {
+		return &pb.StoreResponse{
+			Success: false,
+			Error:   fmt.Sprintf("secret size (%d bytes) exceeds maximum allowed size (%d bytes)", secretSize, s.options.MaxSecretSize),
+		}, nil
+	}
+
+	// Check maximum number of secrets limit (only if storing a new secret)
+	s.secretsMu.RLock()
+	_, exists := s.secrets[req.Name]
+	currentCount := len(s.secrets)
+	s.secretsMu.RUnlock()
+
+	if !exists && currentCount >= s.options.MaxSecrets {
+		return &pb.StoreResponse{
+			Success: false,
+			Error:   fmt.Sprintf("maximum number of secrets (%d) reached", s.options.MaxSecrets),
+		}, nil
+	}
+
 	// Generate salt for this secret
 	salt, err := common.GenerateSalt()
 	if err != nil {

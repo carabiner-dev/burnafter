@@ -13,6 +13,8 @@ type Common struct {
 	Debug             bool
 	EnvVarSocket      string
 	EnvVarDebug       string
+	MaxSecrets        int   // Maximum number of secrets that can be stored
+	MaxSecretSize     int64 // Maximum size of a single secret in bytes
 }
 
 // Server options set
@@ -34,6 +36,8 @@ var defaultCommon = Common{
 	Debug:             false,
 	EnvVarSocket:      "BURNAFTER_SOCKET_PATH",
 	EnvVarDebug:       "BURNAFTER_DEBUG",
+	MaxSecrets:        100,          // Maximum 100 secrets
+	MaxSecretSize:     1024 * 1024,  // 1 MB per secret
 }
 
 // DefaultClient default client options
