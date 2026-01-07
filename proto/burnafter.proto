@@ -1,0 +1,48 @@
+// SPDX-FileCopyrightText: Copyright 2025 Carabiner Systems, Inc
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package burnafter;
+
+option go_package = "github.com/carabiner-dev/burnafter/internal/common";
+
+service BurnAfter {
+  rpc Store(StoreRequest) returns (StoreResponse);
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+// StoreRequest represents a request from the client to store a new secret
+message StoreRequest {
+  // Secret name (id to refetence it)
+  string name = 1;
+  // Secret value to store
+  string secret = 2;
+  // Time to live in seconds
+  int64 ttl_seconds = 3;
+
+  // Compile-time nonce from client
+  string client_nonce = 4; 
+}
+
+// StoreResponse returns the results of storing a secret
+message StoreResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// Get request is a request from the client to retrieve a secre
+message GetRequest {
+  // Secret name to retrieve
+  string name = 1;
+  // Client nonce, a baked value in the client somewhat hidden
+  string client_nonce = 2; // Compile-time nonce from client
+}
+
+// GetResponse returns the results when retrieving the secret.
+message GetResponse {
+  bool success = 1;
+  string secret = 2;
+  string error = 3;
+}
