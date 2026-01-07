@@ -41,8 +41,8 @@ type Server struct {
 	secrets   map[string]*StoredSecret
 	secretsMu sync.RWMutex
 
-	// Session ID is the servers secret nonce generated to derive
-	// the server key.
+	// Session ID is the server's secret nonce generated as part of the
+	// data required to derive the encryption key.
 	sessionID string
 
 	lastActivity time.Time

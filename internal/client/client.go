@@ -19,8 +19,9 @@ import (
 )
 
 // Client is the burnafter client.
-// This is the library that applications embed to spin up a server
-// and store and retrieve secrets.
+//
+// This is the library that applications use to spin up the embedded server
+// used to store and retrieve secrets.
 type Client struct {
 	options *options.Client
 	conn    *grpc.ClientConn
@@ -49,7 +50,7 @@ func (c *Client) Connect() error {
 	}
 
 	// Wait for server to be ready
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		time.Sleep(100 * time.Millisecond)
 		if c.isServerRunning() {
 			return c.dial()
@@ -93,27 +94,54 @@ func (c *Client) dial() error {
 	return nil
 }
 
-// startServer launches the server as a daemon forked from the client process
+// startServer launches the server as a daemon by executing
+// the embedded server binary. It attempts to execute from memory first (memfd_create),
+// falling back to cache directory extraction if memory execution is blocked (e.g., by SELinux).
 func (c *Client) startServer() error {
-	// Get the path to the current executable
-	exePath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get executable path: %w", err)
+	var cmd *exec.Cmd
+	var memFile *os.File
+
+	// Try memfd approach first (better security, no disk writes)
+	memfd, err := createMemfdServer()
+	if err == nil {
+		// Convert the raw fd to an *os.File so we can pass it via ExtraFiles
+		memFile = os.NewFile(uintptr(memfd), "burnafter-server")
+		if memFile != nil {
+			defer memFile.Close()
+
+			// Execute the binary via /proc/self/fd/3
+			// ExtraFiles are mapped starting at fd 3 in the child process
+			cmd = exec.Command("/proc/self/fd/3")
+			cmd.ExtraFiles = []*os.File{memFile}
+
+			if c.options.Debug {
+				fmt.Fprintf(os.Stderr, "Attempting to start server from memfd...\n")
+			}
+		}
 	}
 
-	// Prepare command to run server in daemon mode
-	// We exec the same binary but with environment variables that signal daemon mode
-	// This allows burnafter to be used as a library without requiring CLI subcommands
-	cmd := exec.Command(exePath)
+	// Fallback to writing the binary to cache directory if memfd failed, blocked
+	// or is not supported (ie macos)
+	if cmd == nil {
+		if c.options.Debug {
+			fmt.Fprintf(os.Stderr, "memfd unavailable, falling back to cache directory...\n")
+		}
 
-	// Set environment variables to configure the daemon
+		serverPath, err := extractServerBinaryToCache()
+		if err != nil {
+			return fmt.Errorf("failed to extract server binary: %w", err)
+		}
+
+		cmd = exec.Command(serverPath)
+	}
+
+	// Set environment variables to configure the server
 	cmd.Env = append(os.Environ(),
-		"BURNAFTER_DAEMON_MODE=1",
-		fmt.Sprintf("BURNAFTER_SOCKET_PATH=%s", c.options.SocketPath),
+		fmt.Sprintf("%s=%s", c.options.EnvVarSocket, c.options.SocketPath),
 	)
 
 	if c.options.Debug {
-		cmd.Env = append(cmd.Env, "BURNAFTER_DEBUG=1")
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=1", c.options.EnvVarDebug))
 	}
 
 	// Detach from parent process
@@ -123,11 +151,13 @@ func (c *Client) startServer() error {
 
 	// Set up stdin/stdout/stderr
 	if c.options.Debug {
-		// In debug mode, inherit stdout/stderr
+		// In debug mode, we inherit stdout/stderr so that
+		// we can see the output con the calling application
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	} else {
-		// In production, redirect to /dev/null
+		// In production, redirect to /dev/null. At some poing this should
+		// implement some way to log.
 		devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 		if err != nil {
 			return fmt.Errorf("failed to open /dev/null: %w", err)
@@ -139,10 +169,55 @@ func (c *Client) startServer() error {
 
 	// Start the server process
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start server process: %w", err)
+		// If memfd execution failed (likely SELinux), try cache fallback
+		if memFile != nil && os.IsPermission(err) {
+			if c.options.Debug {
+				fmt.Fprintf(os.Stderr, "memfd execution blocked, retrying with cache directory...\n")
+			}
+
+			memFile.Close() //nolint:errcheck // Close the memfd, we're not using it
+
+			// Extract the binary to the user's cache dir
+			serverPath, extractErr := extractServerBinaryToCache()
+			if extractErr != nil {
+				return fmt.Errorf("failed to extract server binary: %w", extractErr)
+			}
+
+			cmd = exec.Command(serverPath)
+			cmd.Env = append(os.Environ(),
+				fmt.Sprintf("%s=%s", c.options.EnvVarSocket, c.options.SocketPath),
+			)
+			if c.options.Debug {
+				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=1", c.options.EnvVarDebug))
+			}
+
+			cmd.SysProcAttr = &syscall.SysProcAttr{
+				Setsid: true,
+			}
+
+			if c.options.Debug {
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+			} else {
+				devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+				if err != nil {
+					return fmt.Errorf("failed to open /dev/null: %w", err)
+				}
+				cmd.Stdin = devNull
+				cmd.Stdout = devNull
+				cmd.Stderr = devNull
+			}
+
+			// Retry starting the server with cache binary
+			if err := cmd.Start(); err != nil {
+				return fmt.Errorf("failed to start server process: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to start server process: %w", err)
+		}
 	}
 
-	// Don't wait for the process and release it so it doesn't become a zombie
+	// Release the process and don't wait for it so it doesn't become a zombie
 	go cmd.Wait()
 
 	return nil

@@ -11,6 +11,8 @@ type Common struct {
 	DefaultTTL        time.Duration
 	InactivityTimeout time.Duration
 	Debug             bool
+	EnvVarSocket      string
+	EnvVarDebug       string
 }
 
 // Server options set
@@ -30,6 +32,8 @@ var defaultCommon = Common{
 	DefaultTTL:        4 * time.Hour,
 	InactivityTimeout: 10 * time.Minute,
 	Debug:             false,
+	EnvVarSocket:      "BURNAFTER_SOCKET_PATH",
+	EnvVarDebug:       "BURNAFTER_DEBUG",
 }
 
 // DefaultClient default client options
