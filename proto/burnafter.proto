@@ -19,11 +19,12 @@ message StoreRequest {
   string name = 1;
   // Secret value to store
   string secret = 2;
-  // Time to live in seconds
+  // Inactivity TTL in seconds (secret expires if not accessed for this duration)
   int64 ttl_seconds = 3;
-
   // Compile-time nonce from client
-  string client_nonce = 4; 
+  string client_nonce = 4;
+  // Optional: absolute expiration time in seconds from now (0 = no absolute expiration)
+  int64 absolute_expiration_seconds = 5;
 }
 
 // StoreResponse returns the results of storing a secret
