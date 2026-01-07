@@ -28,7 +28,7 @@ type Client struct {
 
 // defaultCommon default common options shared by default server and client sets
 var defaultCommon = Common{
-	SocketPath:        "/tmp/burnafter.sock",
+	SocketPath:        "", // Empty = auto-generate based on client binary hash
 	DefaultTTL:        4 * time.Hour,
 	InactivityTimeout: 10 * time.Minute,
 	Debug:             false,

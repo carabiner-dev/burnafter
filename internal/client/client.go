@@ -30,9 +30,27 @@ type Client struct {
 
 // NewClient creates a new client instance
 func NewClient(opts *options.Client) *Client {
+	// If no socket path is specified, generate one based on the client binary hash
+	if opts.SocketPath == "" {
+		opts.SocketPath = generateSocketPath()
+	}
+
 	return &Client{
 		options: opts,
 	}
+}
+
+// generateSocketPath creates a socket path based on the client binary's SHA256 hash
+func generateSocketPath() string {
+	hash, err := pb.GetCurrentBinaryHash()
+	if err != nil {
+		// Fallback to a default path if we can't compute the hash
+		return "/tmp/burnafter.sock"
+	}
+
+	// Use first 16 characters of hash for the socket name
+	// This provides uniqueness while keeping the filename reasonable
+	return fmt.Sprintf("/tmp/burnafter-%s.sock", hash[:16])
 }
 
 // Connect establishes the connection to the server.
