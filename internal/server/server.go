@@ -4,6 +4,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -17,6 +18,18 @@ import (
 	"google.golang.org/grpc"
 )
 
+// StoredSecret represents a secret stored in memory
+type StoredSecret struct {
+	Name              string        // Name of the secret
+	EncryptedData     []byte        // Encrypted secret data
+	Salt              []byte        // Salt used for key derivation
+	ClientBinaryHash  string        // Hash of the client binary that stored it
+	ClientNonce       string        // Compile-time nonce from client
+	InactivityTTL     time.Duration // TTL for inactivity-based expiration
+	AbsoluteExpiresAt *time.Time    // Optional absolute expiration time (nil = no absolute expiration)
+	LastAccessed      time.Time     // Last time this secret was accessed
+}
+
 // Server implements the BurnAfter gRPC service
 type Server struct {
 	pb.UnimplementedBurnAfterServer
@@ -25,7 +38,7 @@ type Server struct {
 	options *options.Server
 
 	// secrets is the key-value map that stores th encrypted secrets
-	secrets   map[string]*common.StoredSecret
+	secrets   map[string]*StoredSecret
 	secretsMu sync.RWMutex
 
 	// Session ID is the servers secret nonce generated to derive
@@ -49,7 +62,7 @@ func NewServer(opts *options.Server) (*Server, error) {
 
 	// Create the server
 	s := &Server{
-		secrets:      map[string]*common.StoredSecret{},
+		secrets:      map[string]*StoredSecret{},
 		sessionID:    sessionID,
 		lastActivity: time.Now(),
 		options:      opts,
@@ -117,4 +130,10 @@ func (s *Server) updateActivity() {
 	if s.inactivityTimer != nil {
 		s.inactivityTimer.Reset(s.options.InactivityTimeout)
 	}
+}
+
+// Ping implements the Ping RPC
+func (s *Server) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
+	s.updateActivity()
+	return &pb.PingResponse{Alive: true}, nil
 }

@@ -47,3 +47,12 @@ message GetResponse {
   string secret = 2;
   string error = 3;
 }
+
+// PingRequest an emptyu request to check if the3 server is alive
+message PingRequest {
+}
+
+// Response when the server is running
+message PingResponse {
+  bool alive = 1;
+}
