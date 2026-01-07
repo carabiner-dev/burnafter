@@ -20,6 +20,7 @@ type Server struct {
 
 // Client options set
 type Client struct {
+	Nonce string
 	Common
 }
 

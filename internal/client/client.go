@@ -102,7 +102,19 @@ func (c *Client) startServer() error {
 	}
 
 	// Prepare command to run server in daemon mode
-	cmd := exec.Command(exePath, "server")
+	// We exec the same binary but with environment variables that signal daemon mode
+	// This allows burnafter to be used as a library without requiring CLI subcommands
+	cmd := exec.Command(exePath)
+
+	// Set environment variables to configure the daemon
+	cmd.Env = append(os.Environ(),
+		"BURNAFTER_DAEMON_MODE=1",
+		fmt.Sprintf("BURNAFTER_SOCKET_PATH=%s", c.options.SocketPath),
+	)
+
+	if c.options.Debug {
+		cmd.Env = append(cmd.Env, "BURNAFTER_DEBUG=1")
+	}
 
 	// Detach from parent process
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -111,7 +123,7 @@ func (c *Client) startServer() error {
 
 	// Set up stdin/stdout/stderr
 	if c.options.Debug {
-		// In th client is in debug mode, inherit stdout/stderr
+		// In debug mode, inherit stdout/stderr
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 	} else {

@@ -102,6 +102,9 @@ func (s *Server) Run() error {
 	)
 	pb.RegisterBurnAfterServer(grpcServer, s)
 
+	// Start cleanup goroutine
+	go s.cleanupExpiredSecrets()
+
 	// Start inactivity monitor
 	s.inactivityTimer = time.AfterFunc(s.options.InactivityTimeout, func() {
 		if s.options.Debug {
@@ -136,4 +139,48 @@ func (s *Server) updateActivity() {
 func (s *Server) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
 	s.updateActivity()
 	return &pb.PingResponse{Alive: true}, nil
+}
+
+// cleanupExpiredSecrets runs as a go routine and it periodically removes
+// any expired secrets from memory.
+func (s *Server) cleanupExpiredSecrets() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.secretsMu.Lock()
+			now := time.Now()
+			for name, secret := range s.secrets {
+				expired := false
+				var reason string
+
+				// Check the secret's inactivity expiration time
+				if time.Since(secret.LastAccessed) > secret.InactivityTTL {
+					expired = true
+					reason = "inactivity timeout"
+				}
+
+				// Check the absolute expiration date, this will wipe
+				// the secret regardless if it has been accesses or not
+				// (this absolute date is optional)
+				if secret.AbsoluteExpiresAt != nil && now.After(*secret.AbsoluteExpiresAt) {
+					expired = true
+					reason = "absolute deadline reached"
+				}
+
+				// Remove the secret if it's expired.
+				if expired {
+					if s.options.Debug {
+						log.Printf("Removing expired secret '%s' (reason: %s)", name, reason)
+					}
+					delete(s.secrets, name)
+				}
+			}
+			s.secretsMu.Unlock()
+		case <-s.shutdownChan:
+			return
+		}
+	}
 }
