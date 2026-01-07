@@ -6,29 +6,27 @@ package client
 import (
 	"bytes"
 	"compress/gzip"
-	"embed"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 )
 
-// Embed all pre-compiled server binaries for different platforms
-// These are built by: scripts/build-server-all-platforms.sh
+// embeddedServerBinary is defined in platform-specific files with build tags:
+// - embedded_linux_amd64.go
+// - embedded_linux_arm64.go
+// - embedded_darwin_amd64.go
+// - embedded_darwin_arm64.go
 //
-//go:embed embedded/*.gz
-var embeddedFS embed.FS
+// Each file embeds only the server binary for its specific platform,
+// reducing the final binary size significantly.
 
 // getServerBinary reads and decompresses the embedded server binary for the current platform
 func getServerBinary() ([]byte, error) {
-	// Determine the embedded filename based on current platform
-	filename := fmt.Sprintf("embedded/burnafter-server-%s-%s.gz", runtime.GOOS, runtime.GOARCH)
-
-	// Read the compressed binary from embedded filesystem
-	compressedData, err := embeddedFS.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("no pre-built server binary for %s/%s: %w", runtime.GOOS, runtime.GOARCH, err)
+	// embeddedServerBinary is the compressed .gz data
+	compressedData := embeddedServerBinary
+	if len(compressedData) == 0 {
+		return nil, fmt.Errorf("no embedded server binary found for this platform")
 	}
 
 	// Decompress using gzip
