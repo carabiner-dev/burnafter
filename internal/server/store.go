@@ -94,7 +94,7 @@ func (s *Server) Store(ctx context.Context, req *pb.StoreRequest) (*pb.StoreResp
 	// Store the encrypted secret
 	now := time.Now()
 	s.secretsMu.Lock()
-	s.secrets[req.Name] = &common.StoredSecret{
+	s.secrets[req.Name] = &StoredSecret{
 		Name:              req.Name,
 		EncryptedData:     encrypted,
 		Salt:              salt,
