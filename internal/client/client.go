@@ -59,7 +59,7 @@ func generateSocketPath() string {
 // forked process to start listening.
 func (c *Client) Connect() error {
 	// Check if server is already running
-	if c.isServerRunning() {
+	if c.IsServerRunning() {
 		return c.dial()
 	}
 
@@ -71,7 +71,7 @@ func (c *Client) Connect() error {
 	// Wait for the server to be ready
 	for range 10 {
 		time.Sleep(100 * time.Millisecond)
-		if c.isServerRunning() {
+		if c.IsServerRunning() {
 			return c.dial()
 		}
 	}
@@ -80,12 +80,13 @@ func (c *Client) Connect() error {
 }
 
 // isServerRunning checks if the server is responding
-func (c *Client) isServerRunning() bool {
+func (c *Client) IsServerRunning() bool {
 	conn, err := net.DialTimeout("unix", c.options.SocketPath, 1*time.Second)
 	if err != nil {
+		fmt.Printf("error: %+v\n", err)
 		return false
 	}
-	conn.Close()
+	conn.Close() //nolint:errcheck
 	return true
 }
 
