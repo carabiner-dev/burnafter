@@ -53,14 +53,12 @@ jobs:
 
     - name: Check for uncommitted changes
       run: |
-        if ! git diff --quiet internal/embedded/servers/; then
+        if ! git diff --exit-code --quiet internal/embedded/servers/; then
           echo "Error: Embedded server binaries are out of date!"
           echo "Please run 'make build-servers' and commit the changes."
           echo ""
           echo "Changed files:"
-          git diff --name-only internal/embedded/servers
-          echo ""
-          exit 1
+          git diff --exit-code --name-only internal/embedded/servers
         fi
 
     - name: Verify embedded files exist
