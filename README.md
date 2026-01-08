@@ -24,12 +24,33 @@ application binary can access it.
 - **Automatic Cleanup**: Server shuts down after inactivity period or secret expiration
 - **No Persistency**: Client binary updates invalidate access (by design)
 
+<!-- markdownlint-disable MD001 MD010 -->
+
 ## Security Model
 
 For a complete overview of the security model, see the
 [Security and Architecture](docs/security.md) document.
 
 ### How It Works
+
+#### Architecture (Server Mode)
+
+Applications wishing to store secrets simply need to use the burnafter client
+library. When secrets are stored, burnafter launches a small daemon that handles
+client authentication and secret encryption and in-memory storage:
+
+```mermaid
+graph TD
+    Client["Client<br/>(Binary)"]
+    subgraph daemon["🔥 burnafter daemon"]
+      Secrets["Secrets<br/>(Encrypted in Memory)"]
+    end
+
+    Client -->|Unix Socket + gRPC| daemon
+
+    style Client fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    style Secrets font-size:0.9em,fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+```
 
 1. **Client Authentication**:
    - Client binary hash (SHA256)
@@ -60,8 +81,9 @@ For a complete overview of the security model, see the
 
 ### Threat Model
 
-Designed for defense in depth scenarios, burnafter is not impregnable but
-helps protect secrets together with other control mechhanisms.
+Designed for defense in depth scenarios, burnafter is not intended to be 100%
+impregnable but rather to help keep secrets safer and to be used together with
+other protection mechhanisms.
 
 #### Protects Against
 
@@ -76,24 +98,10 @@ helps protect secrets together with other control mechhanisms.
 - Debuggers attached to server process
 - Root/admin users
 
-## Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/carabiner-dev/burnafter.git
-cd burnafter
-
-# Build
-go build -o burnafter ./cmd/burnafter
-
-# Optional: Install to PATH
-go install ./cmd/burnafter
-```
-
 ## Usage
 
 burnafter is designed to work as a library, but it also offers a command line
-utility that can be used to store secrets in shell scripts, etc.
+utility that can be used to store secrets from shell scripts, etc.
 
 ### Basic Commands
 
