@@ -13,47 +13,80 @@ import (
 
 // getBinaryPath gets the binary path for a process on macOS
 func getBinaryPath(pid int32) (string, error) {
-	// Use sysctl kern.proc.pathname to get the executable path
-	mib := []int32{1, 14, 12, pid} // CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, pid
+	// Try using sysctl with the full MIB path
+	// CTL_KERN=1, KERN_PROCARGS2=49
+	mib := []int32{1, 49, pid}
 
-	// Query the size first
-	n := uintptr(0)
+	// First, get the size
+	var size uintptr
 	_, _, errno := syscall.Syscall6(
 		syscall.SYS___SYSCTL,
 		uintptr(unsafe.Pointer(&mib[0])),
 		uintptr(len(mib)),
 		0,
-		uintptr(unsafe.Pointer(&n)),
+		uintptr(unsafe.Pointer(&size)),
 		0,
 		0,
 	)
+
 	if errno != 0 {
-		return "", errno
+		return "", fmt.Errorf("failed to get process args for pid %d: %w", pid, errno)
+	}
+	if size == 0 {
+		return "", fmt.Errorf("failed to get process args size for pid %d: sysctl returned size 0", pid)
 	}
 
-	if n == 0 {
-		return "", fmt.Errorf("no path returned for pid %d", pid)
+	// Sanity cap on the argsize to avoid dangerous allocations / OOM.
+	const maxSysctlArgsSize = 1 << 20 // 1 MiB
+	if size > maxSysctlArgsSize {
+		return "", fmt.Errorf("sysctl size %d too large for pid %d", size, pid)
 	}
 
-	// Now get the actual path
-	buf := make([]byte, n)
+	// Get the actual data
+	buf := make([]byte, size)
 	_, _, errno = syscall.Syscall6(
 		syscall.SYS___SYSCTL,
 		uintptr(unsafe.Pointer(&mib[0])),
 		uintptr(len(mib)),
-		uintptr(unsafe.Pointer(&buf[0])),
-		uintptr(unsafe.Pointer(&n)),
-		0,
-		0,
+		uintptr(unsafe.Pointer(&buf[0])), // oldp
+		uintptr(unsafe.Pointer(&size)),   // oldlenp (in/out)
+		0,                                // newp
+		0,                                // newlen
 	)
+
 	if errno != 0 {
-		return "", errno
+		return "", fmt.Errorf("failed to get process args for pid %d: %w", pid, errno)
 	}
 
-	// Remove null terminator if present
-	if n > 0 && buf[n-1] == 0 {
-		n--
+	// Parse KERN_PROCARGS2 format:
+	// int argc
+	// executable path (null-terminated)
+	// ...
+	if len(buf) < 4 {
+		return "", fmt.Errorf("buffer too small for pid %d", pid)
 	}
 
-	return string(buf[:n]), nil
+	// Skip the argc (first 4 bytes)
+	// Then find the executable path (null-terminated string)
+	start := 4
+	// Skip any leading nulls
+	for start < len(buf) && buf[start] == 0 {
+		start++
+	}
+
+	if start >= len(buf) {
+		return "", fmt.Errorf("no executable path found for pid %d", pid)
+	}
+
+	// Find the end (null terminator)
+	end := start
+	for end < len(buf) && buf[end] != 0 {
+		end++
+	}
+
+	if end == start {
+		return "", fmt.Errorf("empty executable path for pid %d", pid)
+	}
+
+	return string(buf[start:end]), nil
 }
