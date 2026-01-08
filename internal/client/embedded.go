@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 )
 
 // embeddedServerBinary is defined in platform-specific files with build tags:
@@ -80,6 +82,15 @@ func extractServerBinaryToCache() (string, error) {
 	// Write/update the server binary
 	if err := os.WriteFile(serverPath, serverBinary, 0700); err != nil {
 		return "", fmt.Errorf("failed to write server binary: %w", err)
+	}
+
+	// On macOS, remove quarantine attribute to allow execution
+	// This prevents "unidentified developer" blocking issues
+	if runtime.GOOS == "darwin" {
+		// Remove com.apple.quarantine extended attribute
+		// Using xattr -d is safer than direct syscall for compatibility
+		cmd := exec.Command("xattr", "-d", "com.apple.quarantine", serverPath)
+		_ = cmd.Run() // Ignore errors - attribute might not exist
 	}
 
 	return serverPath, nil
