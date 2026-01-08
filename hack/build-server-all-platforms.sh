@@ -17,6 +17,8 @@ PLATFORMS=(
 
 echo "Building burnafter-server for multiple platforms..."
 
+sha1sum internal/embedded/servers/*/*/*
+
 for platform in "${PLATFORMS[@]}"; do
     IFS='/' read -r GOOS GOARCH <<< "$platform"
 
@@ -42,9 +44,9 @@ for platform in "${PLATFORMS[@]}"; do
     # Show size
     size=$(du -h "${output_path}.gz" | cut -f1)
     echo "  -> ${GOOS}/${GOARCH}/burnafter-server.gz (${size})"
-
-    sha1sum internal/embedded/servers/*/*/*
 done
+
+sha1sum internal/embedded/servers/*/*/*
 
 echo ""
 echo "All server binaries built and compressed in $EMBED_DIR"
