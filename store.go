@@ -12,7 +12,7 @@ import (
 )
 
 // Store stores a secret on the server
-func (c *Client) Store(name, secret string, ttlSeconds, absoluteExpirationSeconds int64) error {
+func (c *Client) Store(ctx context.Context, name, secret string, ttlSeconds, absoluteExpirationSeconds int64) error {
 	if c.client == nil {
 		return fmt.Errorf("not connected to server")
 	}

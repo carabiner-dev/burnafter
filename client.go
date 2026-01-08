@@ -270,12 +270,12 @@ func (c *Client) startServer() error {
 }
 
 // Ping checks if the server is alive
-func (c *Client) Ping() error {
+func (c *Client) Ping(ctx context.Context) error {
 	if c.client == nil {
 		return fmt.Errorf("not connected to server")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	resp, err := c.client.Ping(ctx, &pb.PingRequest{})

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -84,11 +85,11 @@ func main() {
 	// Handle commands
 	switch command {
 	case "store":
-		runStore(clientOpts, args[1:])
+		runStore(context.Background(), clientOpts, args[1:])
 	case "get":
-		runGet(clientOpts, args[1:])
+		runGet(context.Background(), clientOpts, args[1:])
 	case "ping":
-		runPing(clientOpts)
+		runPing(context.Background(), clientOpts)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", command)
 		flag.Usage()
@@ -96,7 +97,7 @@ func main() {
 	}
 }
 
-func runStore(opts *options.Client, args []string) {
+func runStore(ctx context.Context, opts *options.Client, args []string) {
 	if len(args) < 2 {
 		fmt.Fprintln(os.Stderr, "Usage: burnafter store <name> <secret> [ttl_seconds] [absolute_expiration_seconds]")
 		os.Exit(1)
@@ -132,7 +133,7 @@ func runStore(opts *options.Client, args []string) {
 	}
 	defer c.Close()
 
-	if err := c.Store(name, secret, ttl, absoluteExpiration); err != nil {
+	if err := c.Store(ctx, name, secret, ttl, absoluteExpiration); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to store secret: %v\n", err)
 		os.Exit(1)
 	}
@@ -140,7 +141,7 @@ func runStore(opts *options.Client, args []string) {
 	fmt.Printf("Secret '%s' stored successfully\n", name)
 }
 
-func runGet(opts *options.Client, args []string) {
+func runGet(ctx context.Context, opts *options.Client, args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: burnafter get <name>")
 		os.Exit(1)
@@ -155,7 +156,7 @@ func runGet(opts *options.Client, args []string) {
 	}
 	defer c.Close()
 
-	secret, err := c.Get(name)
+	secret, err := c.Get(ctx, name)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to get secret: %v\n", err)
 		os.Exit(1)
@@ -165,7 +166,7 @@ func runGet(opts *options.Client, args []string) {
 	fmt.Println(secret)
 }
 
-func runPing(opts *options.Client) {
+func runPing(ctx context.Context, opts *options.Client) {
 	// Create the new client, but don't connect
 	c := burnafter.NewClient(opts)
 
@@ -183,7 +184,7 @@ func runPing(opts *options.Client) {
 	}
 	defer c.Close()
 
-	if err := c.Ping(); err != nil {
+	if err := c.Ping(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Server ping failed: %v\n", err)
 		os.Exit(1)
 	}

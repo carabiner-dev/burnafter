@@ -12,12 +12,12 @@ import (
 )
 
 // Get retrieves a secret from the server
-func (c *Client) Get(name string) (string, error) {
+func (c *Client) Get(ctx context.Context, name string) (string, error) {
 	if c.client == nil {
 		return "", fmt.Errorf("not connected to server")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	resp, err := c.client.Get(ctx, &pb.GetRequest{
