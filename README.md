@@ -14,6 +14,7 @@ application binary can access it.
 
 ## Key Features
 
+- **Minimal dependencies**: Almost no expternal dependencies
 - **Ephemeral Storage**: Secrets stored in memory only, never written to disk
 - **Binary Verification**: Only the exact binary that stored a secret can retrieve it (via SHA256 hash verification)
 - **Time-Limited**: Secrets expire based on inactivity timeout or an absolute deadline
@@ -24,6 +25,9 @@ application binary can access it.
 - **No Persistency**: Client binary updates invalidate access (by design)
 
 ## Security Model
+
+For a complete overview of the security model, see the
+[Security and Architecture](docs/security.md) document.
 
 ### How It Works
 
@@ -168,34 +172,6 @@ Burnafter enforces limits to prevent resource exhaustion:
    - All secrets have expired or have been deleted (no secrets remaining)
 4. **Cleanup**: Expired secrets removed every minute
 5. **Unix Socket**: Listens on auto-generated hash-based path or custom path
-
-## Architecture
-
-```text
-        ┌─────────────┐
-        │   Client    │
-        │  (Binary)   │
-        └──────┬──────┘
-            │ Unix Socket
-            │ + gRPC
-            ↓
-        ┌─────────────┐
-        │   Server    │
-        │  (Daemon)   │
-        ├─────────────┤
-        │  Secrets    │
-        │ (Encrypted  │
-        │  in Memory) │
-        └─────────────┘
-```
-
-## Security Considerations
-
-1. **Binary Updates**: Updating the client binary invalidates all secrets (by design)
-2. **Server Restart**: Restarting the server makes all secrets unrecoverable
-3. **Same User**: Processes running as the same user can potentially access the encrypted secrets in memory. Key inference is still needed to access the unecrypted data.
-4. **Unix Sockets**: Access controlled by filesystem permissions (0600)
-5. **Key Derivation**: Encryption keys never stored; derived on-demand from multiple inputs
 
 ## Development
 
