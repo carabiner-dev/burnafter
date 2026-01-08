@@ -30,7 +30,7 @@ for platform in "${PLATFORMS[@]}"; do
 
     echo "Building for $GOOS/$GOARCH..."
 
-    GOOS=$GOOS GOARCH=$GOARCH go build \
+    CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build \
         -o "$output_path" \
         -trimpath -buildvcs=false \
         -ldflags="-s -w" \
