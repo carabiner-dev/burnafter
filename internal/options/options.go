@@ -32,12 +32,12 @@ type Client struct {
 var defaultCommon = Common{
 	SocketPath:        "", // Empty = auto-generate based on client binary hash
 	DefaultTTL:        4 * time.Hour,
-	InactivityTimeout: 10 * time.Minute,
+	InactivityTimeout: 0, // Inactivity time to shutdown the server when no more connections are detected
 	Debug:             false,
 	EnvVarSocket:      "BURNAFTER_SOCKET_PATH",
 	EnvVarDebug:       "BURNAFTER_DEBUG",
-	MaxSecrets:        100,          // Maximum 100 secrets
-	MaxSecretSize:     1024 * 1024,  // 1 MB per secret
+	MaxSecrets:        100,         // Maximum 100 secrets
+	MaxSecretSize:     1024 * 1024, // 1 MB per secret
 }
 
 // DefaultClient default client options

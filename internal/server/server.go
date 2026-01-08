@@ -50,6 +50,7 @@ type Server struct {
 
 	inactivityTimer *time.Timer
 	shutdownChan    chan struct{}
+	grpcServer      *grpc.Server
 }
 
 // NewServer creates a new BurnAfter server with the supplied options
@@ -97,25 +98,27 @@ func (s *Server) Run() error {
 	}
 
 	// Create gRPC server with custom credentials to extract peer info
-	grpcServer := grpc.NewServer(
+	s.grpcServer = grpc.NewServer(
 		grpc.Creds(NewPeerCredentials()),
 	)
-	pb.RegisterBurnAfterServer(grpcServer, s)
+	pb.RegisterBurnAfterServer(s.grpcServer, s)
 
 	// Start cleanup goroutine
 	go s.cleanupExpiredSecrets()
 
 	// Start inactivity monitor
-	s.inactivityTimer = time.AfterFunc(s.options.InactivityTimeout, func() {
-		if s.options.Debug {
-			log.Printf("Inactivity timeout reached, shutting down")
-		}
-		grpcServer.GracefulStop()
-		close(s.shutdownChan)
-	})
+	if s.options.InactivityTimeout > 0 {
+		s.inactivityTimer = time.AfterFunc(s.options.InactivityTimeout, func() {
+			if s.options.Debug {
+				log.Printf("Inactivity timeout reached, shutting down")
+			}
+			s.grpcServer.GracefulStop()
+			close(s.shutdownChan)
+		})
+	}
 
 	// Serve
-	if err := grpcServer.Serve(listener); err != nil {
+	if err := s.grpcServer.Serve(listener); err != nil {
 		return fmt.Errorf("failed to serve: %w", err)
 	}
 
@@ -178,7 +181,20 @@ func (s *Server) cleanupExpiredSecrets() {
 					delete(s.secrets, name)
 				}
 			}
+
+			// Check if all secrets have been removed
+			secretCount := len(s.secrets)
 			s.secretsMu.Unlock()
+
+			// If no secrets remain, shutdown the server
+			if secretCount == 0 && s.grpcServer != nil {
+				if s.options.Debug {
+					log.Printf("No secrets remaining, shutting down server")
+				}
+				s.grpcServer.GracefulStop()
+				close(s.shutdownChan)
+				return
+			}
 		case <-s.shutdownChan:
 			return
 		}

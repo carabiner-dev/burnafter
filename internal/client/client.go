@@ -67,7 +67,7 @@ func (c *Client) Connect() error {
 		return fmt.Errorf("starting server: %w", err)
 	}
 
-	// Wait for server to be ready
+	// Wait for the server to be ready
 	for range 10 {
 		time.Sleep(100 * time.Millisecond)
 		if c.isServerRunning() {
