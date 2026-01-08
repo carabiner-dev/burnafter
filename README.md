@@ -150,6 +150,75 @@ DB_PASS=$(burnafter get db-password)
 mysql -u user -p"$DB_PASS" mydatabase
 ```
 
+#### Library Integration
+
+For Go applications, use burnafter as a library for programmatic access:
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/carabiner-dev/burnafter"
+	"github.com/carabiner-dev/burnafter/options"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// Create a new client with default options
+	client := burnafter.NewClient(options.DefaultClient)
+
+	// Connect to the server (auto-starts if not running)
+	if err := client.Connect(ctx); err != nil {
+		log.Fatalf("Failed to connect: %v", err)
+	}
+	defer client.Close()
+
+	// Store a secret with 2-hour TTL
+	err := client.Store(ctx, "api-key", "your-secret-token",
+		options.WithTTL(7200))
+	if err != nil {
+		log.Fatalf("Failed to store secret: %v", err)
+	}
+	fmt.Println("Secret stored successfully")
+
+	// Retrieve the secret
+	secret, err := client.Get(ctx, "api-key")
+	if err != nil {
+		log.Fatalf("Failed to get secret: %v", err)
+	}
+	fmt.Printf("Retrieved secret: %s\n", secret)
+
+	// Use the secret in your application
+	// ... your API calls, database connections, etc.
+}
+```
+
+**Advanced Configuration:**
+
+```go
+// Custom client options
+client := burnafter.NewClient(&options.Client{
+	Nonce: "my-app-v1.0",  // Optional: version-specific nonce
+	Common: options.Common{
+		DefaultTTL:   2 * time.Hour,
+		Debug:        true,
+		MaxSecrets:   200,
+		MaxSecretSize: 2 * 1024 * 1024, // 2 MB
+	},
+})
+
+// Store with absolute expiration time
+expiry := time.Now().Add(24 * time.Hour).Unix()
+err := client.Store(ctx, "temp-token", "secret",
+	options.WithAbsoluteExpiration(expiry))
+```
+
 ## Limits and Resource Management
 
 Burnafter enforces limits to prevent resource exhaustion:
