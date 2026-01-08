@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 )
 
@@ -47,51 +46,45 @@ func getServerBinary() ([]byte, error) {
 	return decompressed, nil
 }
 
-// extractServerBinaryToCache writes the server binary to a cache directory
-// Returns the path to the extracted binary. Used as fallback when memfd is not available.
-func extractServerBinaryToCache() (string, error) {
+// extractServerBinaryToTemp writes the server binary to a temporary file with a
+// randomized name. Returns the path to the extracted binary.
+//
+// On MacOS it will attempt to remove the quarantine bit from the extracted file.
+func extractServerBinaryToTemp() (string, error) {
 	// Get the decompressed server binary for this platform
 	serverBinary, err := getServerBinary()
 	if err != nil {
 		return "", err
 	}
 
-	cacheDir := os.Getenv("XDG_CACHE_HOME")
-	if cacheDir == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("failed to get home directory: %w", err)
-		}
-		cacheDir = filepath.Join(homeDir, ".cache")
+	// Create a temporary file with a unique name
+	tmpFile, err := os.CreateTemp("", "burnafter-server-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
+	tmpPath := tmpFile.Name()
 
-	burnafterCache := filepath.Join(cacheDir, "burnafter")
-	if err := os.MkdirAll(burnafterCache, 0700); err != nil {
-		return "", fmt.Errorf("failed to create cache directory: %w", err)
-	}
-
-	serverPath := filepath.Join(burnafterCache, "burnafter-server")
-
-	// Check if binary already exists and has matching content
-	if existingData, err := os.ReadFile(serverPath); err == nil {
-		if len(existingData) == len(serverBinary) {
-			return serverPath, nil
-		}
-	}
-
-	// Write/update the server binary
-	if err := os.WriteFile(serverPath, serverBinary, 0700); err != nil {
+	// Write the server binary
+	if _, err := tmpFile.Write(serverBinary); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
 		return "", fmt.Errorf("failed to write server binary: %w", err)
 	}
 
+	// Make it executable
+	if err := tmpFile.Chmod(0700); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("failed to make binary executable: %w", err)
+	}
+
+	tmpFile.Close()
+
 	// On macOS, remove quarantine attribute to allow execution
-	// This prevents "unidentified developer" blocking issues
 	if runtime.GOOS == "darwin" {
-		// Remove com.apple.quarantine extended attribute
-		// Using xattr -d is safer than direct syscall for compatibility
-		cmd := exec.Command("xattr", "-d", "com.apple.quarantine", serverPath)
+		cmd := exec.Command("xattr", "-d", "com.apple.quarantine", tmpPath)
 		_ = cmd.Run() // Ignore errors - attribute might not exist
 	}
 
-	return serverPath, nil
+	return tmpPath, nil
 }
