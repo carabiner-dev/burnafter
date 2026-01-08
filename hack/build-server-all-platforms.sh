@@ -30,6 +30,7 @@ for platform in "${PLATFORMS[@]}"; do
 
     GOOS=$GOOS GOARCH=$GOARCH go build \
         -o "$output_path" \
+        -trimpath -buildvcs=false \
         -ldflags="-s -w" \
         "$PROJECT_DIR/cmd/burnafter-server"
 
