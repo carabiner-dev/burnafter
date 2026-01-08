@@ -83,7 +83,6 @@ func (c *Client) Connect() error {
 func (c *Client) IsServerRunning() bool {
 	conn, err := net.DialTimeout("unix", c.options.SocketPath, 1*time.Second)
 	if err != nil {
-		fmt.Printf("error: %+v\n", err)
 		return false
 	}
 	conn.Close() //nolint:errcheck
