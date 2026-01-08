@@ -11,6 +11,7 @@ on:
 
 jobs:
   test:
+    name: Run all tests
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -52,22 +53,20 @@ jobs:
 
     - name: Check for uncommitted changes
       run: |
-        if ! git diff --quiet internal/client/embedded/; then
+        if ! git diff --quiet internal/embedded/servers/; then
           echo "Error: Embedded server binaries are out of date!"
           echo "Please run 'make build-servers' and commit the changes."
           echo ""
           echo "Changed files:"
-          git diff --name-only internal/client/embedded/
+          git diff --name-only internal/embedded/servers
           echo ""
-          echo "Diff:"
-          git diff internal/client/embedded/
           exit 1
         fi
 
     - name: Verify embedded files exist
       run: |
         for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
-          file="internal/client/embedded/${platform}/burnafter-server.gz"
+          file="internal/embedded/servers/${platform}/burnafter-server.gz"
           if [ ! -f "$file" ]; then
             echo "Error: Missing embedded server binary: $file"
             exit 1
