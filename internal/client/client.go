@@ -119,6 +119,7 @@ func (c *Client) dial() error {
 func (c *Client) startServer() error {
 	var cmd *exec.Cmd
 	var memFile *os.File
+	var tempServerPath string // Track temp file for cleanup
 
 	// Try memfd approach first (better security, no disk writes)
 	memfd, err := createMemfdServer()
@@ -139,17 +140,18 @@ func (c *Client) startServer() error {
 		}
 	}
 
-	// Fallback to writing the binary to cache directory if memfd failed, blocked
+	// Fallback to writing the binary to temp file if memfd failed, blocked
 	// or is not supported (ie macos)
 	if cmd == nil {
 		if c.options.Debug {
-			fmt.Fprintf(os.Stderr, "memfd unavailable, falling back to cache directory...\n")
+			fmt.Fprintf(os.Stderr, "memfd unavailable, falling back to temp file...\n")
 		}
 
-		serverPath, err := extractServerBinaryToCache()
+		serverPath, err := extractServerBinaryToTemp()
 		if err != nil {
 			return fmt.Errorf("failed to extract server binary: %w", err)
 		}
+		tempServerPath = serverPath
 
 		cmd = exec.Command(serverPath)
 	}
@@ -191,19 +193,25 @@ func (c *Client) startServer() error {
 
 	// Start the server process
 	if err := cmd.Start(); err != nil {
-		// If memfd execution failed (likely SELinux), try cache fallback
+		// Clean up temp file if it was created
+		if tempServerPath != "" {
+			os.Remove(tempServerPath)
+		}
+
+		// If memfd execution failed (likely SELinux), try temp file fallback
 		if memFile != nil && os.IsPermission(err) {
 			if c.options.Debug {
-				fmt.Fprintf(os.Stderr, "memfd execution blocked, retrying with cache directory...\n")
+				fmt.Fprintf(os.Stderr, "memfd execution blocked, retrying with temp file...\n")
 			}
 
 			memFile.Close() //nolint:errcheck // Close the memfd, we're not using it
 
-			// Extract the binary to the user's cache dir
-			serverPath, extractErr := extractServerBinaryToCache()
+			// Extract the binary to a temp file
+			serverPath, extractErr := extractServerBinaryToTemp()
 			if extractErr != nil {
 				return fmt.Errorf("failed to extract server binary: %w", extractErr)
 			}
+			tempServerPath = serverPath
 
 			cmd = exec.Command(serverPath)
 
@@ -228,13 +236,30 @@ func (c *Client) startServer() error {
 				cmd.Stderr = devNull
 			}
 
-			// Retry starting the server with cache binary
+			// Retry starting the server with temp binary
 			if err := cmd.Start(); err != nil {
+				// Clean up temp file on failure
+				if tempServerPath != "" {
+					os.Remove(tempServerPath)
+				}
 				return fmt.Errorf("failed to start server process: %w", err)
 			}
 		} else {
 			return fmt.Errorf("failed to start server process: %w", err)
 		}
+	}
+
+	// Server started successfully - schedule cleanup of temp file if it was created
+	// We delay the cleanup to give the OS time to load the binary into memory
+	if tempServerPath != "" {
+		go func(path string) {
+			// Wait a bit for the OS to finish loading the binary into memory
+			time.Sleep(2 * time.Second)
+			if c.options.Debug {
+				fmt.Fprintf(os.Stderr, "Removing temp server file: %s\n", path)
+			}
+			os.Remove(path)
+		}(tempServerPath)
 	}
 
 	// Release the process and don't wait for it so it doesn't become a zombie
