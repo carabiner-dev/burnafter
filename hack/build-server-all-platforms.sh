@@ -42,6 +42,8 @@ for platform in "${PLATFORMS[@]}"; do
     # Show size
     size=$(du -h "${output_path}.gz" | cut -f1)
     echo "  -> ${GOOS}/${GOARCH}/burnafter-server.gz (${size})"
+
+    sha1sum internal/embedded/servers/*/*/*
 done
 
 echo ""
