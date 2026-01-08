@@ -133,7 +133,12 @@ func runStore(ctx context.Context, opts *options.Client, args []string) error {
 	}
 	defer c.Close() //nolint:errcheck
 
-	if err := c.Store(ctx, name, secret, ttl, absoluteExpiration); err != nil {
+	// Store the secret:
+	if err := c.Store(
+		ctx, name, secret,
+		options.WithTTL(ttl),
+		options.WithAbsoluteExpiration(absoluteExpiration),
+	); err != nil {
 		return fmt.Errorf("failed to store secret: %w", err)
 	}
 

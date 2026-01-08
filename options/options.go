@@ -49,3 +49,24 @@ var DefaultClient = &Client{
 var DefaultServer = &Server{
 	Common: defaultCommon,
 }
+
+type Store struct {
+	TtlSeconds                int64
+	AbsoluteExpirationSeconds int64
+}
+
+type StoreOptsFn func(*Store) error
+
+func WithTTL(secs int64) StoreOptsFn {
+	return func(s *Store) error {
+		s.TtlSeconds = secs
+		return nil
+	}
+}
+
+func WithAbsoluteExpiration(secs int64) StoreOptsFn {
+	return func(s *Store) error {
+		s.AbsoluteExpirationSeconds = secs
+		return nil
+	}
+}

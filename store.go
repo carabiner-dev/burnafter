@@ -9,12 +9,20 @@ import (
 	"time"
 
 	pb "github.com/carabiner-dev/burnafter/internal/common"
+	"github.com/carabiner-dev/burnafter/options"
 )
 
 // Store stores a secret on the server
-func (c *Client) Store(ctx context.Context, name, secret string, ttlSeconds, absoluteExpirationSeconds int64) error {
+func (c *Client) Store(ctx context.Context, name, secret string, funcs ...options.StoreOptsFn) error {
 	if c.client == nil {
 		return fmt.Errorf("not connected to server")
+	}
+
+	opts := &options.Store{}
+	for _, f := range funcs {
+		if err := f(opts); err != nil {
+			return err
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -23,9 +31,9 @@ func (c *Client) Store(ctx context.Context, name, secret string, ttlSeconds, abs
 	resp, err := c.client.Store(ctx, &pb.StoreRequest{
 		Name:                      name,
 		Secret:                    secret,
-		TtlSeconds:                ttlSeconds,
+		TtlSeconds:                opts.TtlSeconds,
 		ClientNonce:               c.options.Nonce,
-		AbsoluteExpirationSeconds: absoluteExpirationSeconds,
+		AbsoluteExpirationSeconds: opts.AbsoluteExpirationSeconds,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to store secret: %w", err)
