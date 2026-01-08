@@ -8,6 +8,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -17,14 +18,21 @@ import (
 )
 
 func main() {
+	// Start server with default options
 	serverOpts := options.DefaultServer
 
-	if socketPath := os.Getenv(serverOpts.EnvVarSocket); socketPath != "" {
-		serverOpts.SocketPath = socketPath
+	// If JSON options are passed as the first argument, merge them with defaults
+	if len(os.Args) > 1 {
+		var clientOpts options.Common
+		if err := json.Unmarshal([]byte(os.Args[1]), &clientOpts); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to parse options: %v\n", err)
+			os.Exit(1)
+		}
+		serverOpts.Common = clientOpts
 	}
 
-	if os.Getenv(serverOpts.EnvVarDebug) == "1" {
-		serverOpts.Debug = true
+	// Configure logging based on debug setting
+	if serverOpts.Debug {
 		log.SetOutput(os.Stderr)
 	} else {
 		log.SetOutput(os.NewFile(0, os.DevNull))

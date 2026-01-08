@@ -33,9 +33,5 @@ Thumbs.db
 dist/
 build/
 
-# Embedded binaries (keep .gz files, ignore uncompressed)
-internal/client/embedded/*
-!internal/client/embedded/*.gz
-
 # Socket files
 *.sock

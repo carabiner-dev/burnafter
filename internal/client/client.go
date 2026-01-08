@@ -5,6 +5,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -153,14 +154,17 @@ func (c *Client) startServer() error {
 		cmd = exec.Command(serverPath)
 	}
 
-	// Set environment variables to configure the server
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("%s=%s", c.options.EnvVarSocket, c.options.SocketPath),
-	)
-
-	if c.options.Debug {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=1", c.options.EnvVarDebug))
+	// Marshal the client options to JSON to pass to the server
+	optionsJSON, err := json.Marshal(c.options.Common)
+	if err != nil {
+		return fmt.Errorf("failed to marshal options: %w", err)
 	}
+
+	// Set the JSON options as the first command-line argument
+	cmd.Args = append([]string{cmd.Path, string(optionsJSON)}, cmd.Args[1:]...)
+
+	// Inherit the environment (no need to pass individual vars)
+	cmd.Env = os.Environ()
 
 	// Detach from parent process
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -202,12 +206,10 @@ func (c *Client) startServer() error {
 			}
 
 			cmd = exec.Command(serverPath)
-			cmd.Env = append(os.Environ(),
-				fmt.Sprintf("%s=%s", c.options.EnvVarSocket, c.options.SocketPath),
-			)
-			if c.options.Debug {
-				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=1", c.options.EnvVarDebug))
-			}
+
+			// Marshal options and pass as first argument
+			cmd.Args = append([]string{cmd.Path, string(optionsJSON)}, cmd.Args[1:]...)
+			cmd.Env = os.Environ()
 
 			cmd.SysProcAttr = &syscall.SysProcAttr{
 				Setsid: true,
