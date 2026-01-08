@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/chainguard-dev/clog"
 	"google.golang.org/grpc"
 
 	pb "github.com/carabiner-dev/burnafter/internal/common"
@@ -26,9 +27,10 @@ import (
 // This is the library that applications use to spin up the embedded server
 // used to store and retrieve secrets.
 type Client struct {
-	options *options.Client
-	conn    *grpc.ClientConn
-	client  pb.BurnAfterClient
+	options           *options.Client
+	conn              *grpc.ClientConn
+	client            pb.BurnAfterClient
+	serverStartFailed bool // Track if server startup was attempted and failed
 }
 
 // NewClient creates a new client instance
@@ -59,7 +61,18 @@ func generateSocketPath() string {
 // Connect establishes the connection to the server.
 // If the server is not running, this function spawns the
 // forked process to start listening.
+// If NoServer option is set or server startup fails, fallback mode is used.
 func (c *Client) Connect(ctx context.Context) error {
+	// If NoServer option is set, skip server connection
+	if c.options.NoServer {
+		return nil
+	}
+
+	// If server startup already failed, skip trying again
+	if c.serverStartFailed {
+		return nil
+	}
+
 	// Check if server is already running
 	if c.IsServerRunning(ctx) {
 		return c.dial()
@@ -67,7 +80,11 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	// Server is not running, start it
 	if err := c.startServer(ctx); err != nil {
-		return fmt.Errorf("starting server: %w", err)
+		// .. if it fails, then skip it and go to fallback mode
+		clog.FatalContextf(ctx, "error starting server: %v", err)
+		c.serverStartFailed = true
+
+		return nil // Don't return error, fallback mode will be used
 	}
 
 	// Wait for the server to be ready
@@ -78,7 +95,9 @@ func (c *Client) Connect(ctx context.Context) error {
 		}
 	}
 
-	return fmt.Errorf("server failed to start within timeout")
+	// Server failed to start, mark as failed and use fallback
+	c.serverStartFailed = true
+	return nil
 }
 
 // isServerRunning checks if the server is responding
@@ -274,6 +293,12 @@ func (c *Client) startServer(ctx context.Context) error {
 
 // Ping checks if the server is alive
 func (c *Client) Ping(ctx context.Context) error {
+	// In fallback mode, always return success
+	if c.useFallback() {
+		return nil
+	}
+
+	// Server mode
 	if c.client == nil {
 		return fmt.Errorf("not connected to server")
 	}

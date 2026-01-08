@@ -11,8 +11,23 @@ import (
 	pb "github.com/carabiner-dev/burnafter/internal/common"
 )
 
-// Get retrieves a secret from the server
+// Get retrieves a secret from the server or fallback encrypted file storage
 func (c *Client) Get(ctx context.Context, name string) (string, error) {
+	// Use fallback storage if server is not available
+	if c.useFallback() {
+		// Decrypt from file
+		secret, err := c.decryptSecret(name)
+		if err != nil {
+			return "", err
+		}
+
+		// Cleanup expired files
+		_ = c.cleanupExpiredFallbackFiles() //nolint:errcheck
+
+		return string(secret), nil
+	}
+
+	// Server mode
 	if c.client == nil {
 		return "", fmt.Errorf("not connected to server")
 	}
