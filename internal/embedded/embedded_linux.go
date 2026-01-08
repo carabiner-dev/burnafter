@@ -4,7 +4,7 @@
 //go:build linux
 // +build linux
 
-package client
+package embedded
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 
 // createMemfdServer creates an anonymous in-memory file containing the server binary
 // and returns the file descriptor. This is Linux-specific.
-func createMemfdServer() (int, error) {
+func CreateMemfdServer() (int, error) {
 	// Get the decompressed server binary for this platform
 	serverBinary, err := getServerBinary()
 	if err != nil {

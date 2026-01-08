@@ -13,8 +13,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/carabiner-dev/burnafter/internal/options"
 	"github.com/carabiner-dev/burnafter/internal/server"
+	"github.com/carabiner-dev/burnafter/options"
 )
 
 func main() {

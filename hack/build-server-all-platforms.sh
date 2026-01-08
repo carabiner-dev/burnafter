@@ -5,7 +5,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-EMBED_DIR="$PROJECT_DIR/internal/client/embedded"
+EMBED_DIR="$PROJECT_DIR/internal/embedded/servers"
 
 # Platforms to build for
 PLATFORMS=(

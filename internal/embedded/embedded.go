@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 Carabiner Systems, Inc
 // SPDX-License-Identifier: Apache-2.0
 
-package client
+package embedded
 
 import (
 	"bytes"
@@ -46,11 +46,11 @@ func getServerBinary() ([]byte, error) {
 	return decompressed, nil
 }
 
-// extractServerBinaryToTemp writes the server binary to a temporary file with a
+// ExtractServerBinaryToTemp writes the server binary to a temporary file with a
 // randomized name. Returns the path to the extracted binary.
 //
 // On MacOS it will attempt to remove the quarantine bit from the extracted file.
-func extractServerBinaryToTemp() (string, error) {
+func ExtractServerBinaryToTemp() (string, error) {
 	// Get the decompressed server binary for this platform
 	serverBinary, err := getServerBinary()
 	if err != nil {

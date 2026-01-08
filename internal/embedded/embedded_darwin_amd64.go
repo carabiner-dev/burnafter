@@ -4,7 +4,7 @@
 //go:build darwin && amd64
 // +build darwin,amd64
 
-package client
+package embedded
 
 import (
 	_ "embed"
@@ -12,5 +12,5 @@ import (
 
 // Embed the server binary for darwin/amd64
 //
-//go:embed embedded/darwin/amd64/burnafter-server.gz
+//go:embed servers/darwin/amd64/burnafter-server.gz
 var embeddedServerBinary []byte

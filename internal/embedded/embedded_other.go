@@ -4,13 +4,13 @@
 //go:build !linux
 // +build !linux
 
-package client
+package embedded
 
 import "fmt"
 
-// createMemfdServer is not available on non-Linux platforms.
+// CreateMemfdServer is not available on non-Linux platforms.
 // The client will automatically fall back to extract the binary
-// to the user's .cache directory
-func createMemfdServer() (int, error) {
+// to an ephemeral tmp file.
+func CreateMemfdServer() (int, error) {
 	return -1, fmt.Errorf("memfd_create not supported on this platform")
 }

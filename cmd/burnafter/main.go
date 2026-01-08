@@ -10,8 +10,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/carabiner-dev/burnafter/internal/client"
-	"github.com/carabiner-dev/burnafter/internal/options"
+	"github.com/carabiner-dev/burnafter"
+	"github.com/carabiner-dev/burnafter/options"
 )
 
 const usage = `burnafter - Ephemeral secret storage with binary verification
@@ -125,7 +125,7 @@ func runStore(opts *options.Client, args []string) {
 		}
 	}
 
-	c := client.NewClient(opts)
+	c := burnafter.NewClient(opts)
 	if err := c.Connect(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to connect: %v\n", err)
 		os.Exit(1)
@@ -148,7 +148,7 @@ func runGet(opts *options.Client, args []string) {
 
 	name := args[0]
 
-	c := client.NewClient(opts)
+	c := burnafter.NewClient(opts)
 	if err := c.Connect(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to connect: %v\n", err)
 		os.Exit(1)
@@ -167,7 +167,7 @@ func runGet(opts *options.Client, args []string) {
 
 func runPing(opts *options.Client) {
 	// Create the new client, but don't connect
-	c := client.NewClient(opts)
+	c := burnafter.NewClient(opts)
 
 	// If the server is not running, stop here to avoid
 	// starting the daemon when just checking.

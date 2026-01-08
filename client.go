@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 Carabiner Systems, Inc
 // SPDX-License-Identifier: Apache-2.0
 
-package client
+package burnafter
 
 import (
 	"context"
@@ -14,8 +14,9 @@ import (
 	"time"
 
 	pb "github.com/carabiner-dev/burnafter/internal/common"
-	"github.com/carabiner-dev/burnafter/internal/options"
+	"github.com/carabiner-dev/burnafter/internal/embedded"
 	"github.com/carabiner-dev/burnafter/internal/server"
+	"github.com/carabiner-dev/burnafter/options"
 	"google.golang.org/grpc"
 )
 
@@ -122,7 +123,7 @@ func (c *Client) startServer() error {
 	var tempServerPath string // Track temp file for cleanup
 
 	// Try memfd approach first (better security, no disk writes)
-	memfd, err := createMemfdServer()
+	memfd, err := embedded.CreateMemfdServer()
 	if err == nil {
 		// Convert the raw fd to an *os.File so we can pass it via ExtraFiles
 		memFile = os.NewFile(uintptr(memfd), "burnafter-server")
@@ -147,7 +148,7 @@ func (c *Client) startServer() error {
 			fmt.Fprintf(os.Stderr, "memfd unavailable, falling back to temp file...\n")
 		}
 
-		serverPath, err := extractServerBinaryToTemp()
+		serverPath, err := embedded.ExtractServerBinaryToTemp()
 		if err != nil {
 			return fmt.Errorf("failed to extract server binary: %w", err)
 		}
@@ -207,7 +208,7 @@ func (c *Client) startServer() error {
 			memFile.Close() //nolint:errcheck // Close the memfd, we're not using it
 
 			// Extract the binary to a temp file
-			serverPath, extractErr := extractServerBinaryToTemp()
+			serverPath, extractErr := embedded.ExtractServerBinaryToTemp()
 			if extractErr != nil {
 				return fmt.Errorf("failed to extract server binary: %w", extractErr)
 			}

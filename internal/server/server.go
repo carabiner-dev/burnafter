@@ -14,7 +14,7 @@ import (
 
 	"github.com/carabiner-dev/burnafter/internal/common"
 	pb "github.com/carabiner-dev/burnafter/internal/common"
-	"github.com/carabiner-dev/burnafter/internal/options"
+	"github.com/carabiner-dev/burnafter/options"
 	"google.golang.org/grpc"
 )
 
