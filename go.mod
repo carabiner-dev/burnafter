@@ -1,6 +1,6 @@
 module github.com/carabiner-dev/burnafter
 
-go 1.25
+go 1.24.11
 
 require (
 	golang.org/x/crypto v0.46.0
