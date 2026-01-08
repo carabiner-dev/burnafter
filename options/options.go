@@ -7,14 +7,14 @@ import "time"
 
 // Common options for client and server options
 type Common struct {
-	SocketPath        string
-	DefaultTTL        time.Duration
-	InactivityTimeout time.Duration
-	Debug             bool
-	EnvVarSocket      string
-	EnvVarDebug       string
-	MaxSecrets        int   // Maximum number of secrets that can be stored
-	MaxSecretSize     int64 // Maximum size of a single secret in bytes
+	SocketPath        string        `json:"socket_path"`
+	DefaultTTL        time.Duration `json:"default_ttl"`
+	InactivityTimeout time.Duration `json:"inactivity_timeout"`
+	Debug             bool          `json:"debug"`
+	EnvVarSocket      string        `json:"envar_socket"`
+	EnvVarDebug       string        `json:"envar_debug"`
+	MaxSecrets        int           `json:"max_secrets"`     // Maximum number of secrets that can be stored
+	MaxSecretSize     int64         `json:"max_secret_size"` // Maximum size of a single secret in bytes
 }
 
 // Server options set

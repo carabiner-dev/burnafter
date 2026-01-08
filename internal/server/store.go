@@ -10,14 +10,13 @@ import (
 	"time"
 
 	"github.com/carabiner-dev/burnafter/internal/common"
-	pb "github.com/carabiner-dev/burnafter/internal/common"
 )
 
 // Store implements the Store RPC. Takes a storage request to save aaa secret
 // in the server's secret map. It handles getting the client finger print,
 // deriving the key, encrypting the secret and storing it along with the
 // required metadaata.
-func (s *Server) Store(ctx context.Context, req *pb.StoreRequest) (*pb.StoreResponse, error) {
+func (s *Server) Store(ctx context.Context, req *common.StoreRequest) (*common.StoreResponse, error) {
 	s.updateActivity()
 
 	if s.options.Debug {
@@ -27,17 +26,17 @@ func (s *Server) Store(ctx context.Context, req *pb.StoreRequest) (*pb.StoreResp
 	// Get client PID and verify binary
 	authInfo, err := GetPeerAuthInfo(ctx)
 	if err != nil {
-		return &pb.StoreResponse{
+		return &common.StoreResponse{
 			Success: false,
 			Error:   fmt.Sprintf("failed to get client credentials: %v", err),
 		}, nil
 	}
 
-	// Read the client binary information. This includes the hash wich will
+	// Read the client binary information. This includes the hash which will
 	// be used to derive the encryption key.
 	_, clientHash, err := common.GetClientBinaryInfo(authInfo.PID)
 	if err != nil {
-		return &pb.StoreResponse{
+		return &common.StoreResponse{
 			Success: false,
 			Error:   fmt.Sprintf("failed to verify client binary: %v", err),
 		}, nil
@@ -51,7 +50,7 @@ func (s *Server) Store(ctx context.Context, req *pb.StoreRequest) (*pb.StoreResp
 	// Check secret size limit
 	secretSize := int64(len(req.Secret))
 	if secretSize > s.options.MaxSecretSize {
-		return &pb.StoreResponse{
+		return &common.StoreResponse{
 			Success: false,
 			Error:   fmt.Sprintf("secret size (%d bytes) exceeds maximum allowed size (%d bytes)", secretSize, s.options.MaxSecretSize),
 		}, nil
@@ -64,7 +63,7 @@ func (s *Server) Store(ctx context.Context, req *pb.StoreRequest) (*pb.StoreResp
 	s.secretsMu.RUnlock()
 
 	if !exists && currentCount >= s.options.MaxSecrets {
-		return &pb.StoreResponse{
+		return &common.StoreResponse{
 			Success: false,
 			Error:   fmt.Sprintf("maximum number of secrets (%d) reached", s.options.MaxSecrets),
 		}, nil
@@ -73,7 +72,7 @@ func (s *Server) Store(ctx context.Context, req *pb.StoreRequest) (*pb.StoreResp
 	// Generate salt for this secret
 	salt, err := common.GenerateSalt()
 	if err != nil {
-		return &pb.StoreResponse{
+		return &common.StoreResponse{
 			Success: false,
 			Error:   fmt.Sprintf("failed to generate salt: %v", err),
 		}, nil
@@ -83,7 +82,7 @@ func (s *Server) Store(ctx context.Context, req *pb.StoreRequest) (*pb.StoreResp
 	// session ID and the secret name (plus the salt)
 	key, err := common.DeriveKey(clientHash, req.ClientNonce, s.sessionID, req.Name, salt)
 	if err != nil {
-		return &pb.StoreResponse{
+		return &common.StoreResponse{
 			Success: false,
 			Error:   fmt.Sprintf("failed to derive key: %v", err),
 		}, nil
@@ -94,7 +93,7 @@ func (s *Server) Store(ctx context.Context, req *pb.StoreRequest) (*pb.StoreResp
 	// Encrypt the secret
 	encrypted, err := common.Encrypt(req.Secret, key)
 	if err != nil {
-		return &pb.StoreResponse{
+		return &common.StoreResponse{
 			Success: false,
 			Error:   fmt.Sprintf("failed to encrypt secret: %v", err),
 		}, nil
@@ -138,5 +137,5 @@ func (s *Server) Store(ctx context.Context, req *pb.StoreRequest) (*pb.StoreResp
 		}
 	}
 
-	return &pb.StoreResponse{Success: true}, nil
+	return &common.StoreResponse{Success: true}, nil
 }

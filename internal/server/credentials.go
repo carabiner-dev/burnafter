@@ -37,7 +37,7 @@ func (c *peerCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentia
 
 	pid, uid, gid, err := GetPeerCredentials(unixConn)
 	if err != nil {
-		// Don't fail the handshake, just log and continue
+		//nolint:nilerr // Don't fail the handshake, just log and continue
 		return rawConn, &peerAuthInfo{}, nil
 	}
 

@@ -17,7 +17,7 @@ func (c *Client) Store(ctx context.Context, name, secret string, ttlSeconds, abs
 		return fmt.Errorf("not connected to server")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	resp, err := c.client.Store(ctx, &pb.StoreRequest{
@@ -27,7 +27,6 @@ func (c *Client) Store(ctx context.Context, name, secret string, ttlSeconds, abs
 		ClientNonce:               c.options.Nonce,
 		AbsoluteExpirationSeconds: absoluteExpirationSeconds,
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to store secret: %w", err)
 	}

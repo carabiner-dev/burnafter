@@ -24,7 +24,6 @@ func (c *Client) Get(ctx context.Context, name string) (string, error) {
 		Name:        name,
 		ClientNonce: c.options.Nonce,
 	})
-
 	if err != nil {
 		return "", fmt.Errorf("getting secret: %w", err)
 	}

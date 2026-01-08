@@ -10,13 +10,12 @@ import (
 	"time"
 
 	"github.com/carabiner-dev/burnafter/internal/common"
-	pb "github.com/carabiner-dev/burnafter/internal/common"
 )
 
 // Get implements the Get RPC by handling the full get lifecycle:
 // getting the client fingerprint, deriving the secret's encryption
 // key, decrpypting the secret and sending it back./
-func (s *Server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
+func (s *Server) Get(ctx context.Context, req *common.GetRequest) (*common.GetResponse, error) {
 	s.updateActivity()
 
 	if s.options.Debug {
@@ -26,7 +25,7 @@ func (s *Server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 	// Get client PID and verify binary
 	authInfo, err := GetPeerAuthInfo(ctx)
 	if err != nil {
-		return &pb.GetResponse{
+		return &common.GetResponse{
 			Success: false,
 			Error:   fmt.Sprintf("failed to get client credentials: %v", err),
 		}, nil
@@ -34,7 +33,7 @@ func (s *Server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 
 	_, clientHash, err := common.GetClientBinaryInfo(authInfo.PID)
 	if err != nil {
-		return &pb.GetResponse{
+		return &common.GetResponse{
 			Success: false,
 			Error:   fmt.Sprintf("failed to verify client binary: %v", err),
 		}, nil
@@ -45,7 +44,7 @@ func (s *Server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 	stored, exists := s.secrets[req.Name]
 	if !exists {
 		s.secretsMu.Unlock()
-		return &pb.GetResponse{
+		return &common.GetResponse{
 			Success: false,
 			Error:   "secret not found",
 		}, nil
@@ -57,7 +56,7 @@ func (s *Server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 	if time.Since(stored.LastAccessed) > stored.InactivityTTL {
 		delete(s.secrets, req.Name)
 		s.secretsMu.Unlock()
-		return &pb.GetResponse{
+		return &common.GetResponse{
 			Success: false,
 			Error:   "secret has expired due to inactivity",
 		}, nil
@@ -67,7 +66,7 @@ func (s *Server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 	if stored.AbsoluteExpiresAt != nil && now.After(*stored.AbsoluteExpiresAt) {
 		delete(s.secrets, req.Name)
 		s.secretsMu.Unlock()
-		return &pb.GetResponse{
+		return &common.GetResponse{
 			Success: false,
 			Error:   "secret has expired (absolute deadline reached)",
 		}, nil
@@ -76,7 +75,7 @@ func (s *Server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 	// Verify tjat client binary hash matches
 	if stored.ClientBinaryHash != clientHash {
 		s.secretsMu.Unlock()
-		return &pb.GetResponse{
+		return &common.GetResponse{
 			Success: false,
 			Error:   "client binary hash mismatch - unauthorized",
 		}, nil
@@ -85,7 +84,7 @@ func (s *Server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 	// Verify client nonce matches
 	if stored.ClientNonce != req.ClientNonce {
 		s.secretsMu.Unlock()
-		return &pb.GetResponse{
+		return &common.GetResponse{
 			Success: false,
 			Error:   "client nonce mismatch - unauthorized",
 		}, nil
@@ -98,7 +97,7 @@ func (s *Server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 	// Derive the key again
 	key, err := common.DeriveKey(clientHash, req.ClientNonce, s.sessionID, req.Name, stored.Salt)
 	if err != nil {
-		return &pb.GetResponse{
+		return &common.GetResponse{
 			Success: false,
 			Error:   fmt.Sprintf("failed to derive key: %v", err),
 		}, nil
@@ -108,7 +107,7 @@ func (s *Server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 	// Decrypt the secret
 	plaintext, err := common.Decrypt(stored.EncryptedData, key)
 	if err != nil {
-		return &pb.GetResponse{
+		return &common.GetResponse{
 			Success: false,
 			Error:   fmt.Sprintf("failed to decrypt secret: %v", err),
 		}, nil
@@ -118,7 +117,7 @@ func (s *Server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 		log.Printf("Retrieved secret '%s'", req.Name)
 	}
 
-	return &pb.GetResponse{
+	return &common.GetResponse{
 		Success: true,
 		Secret:  plaintext,
 	}, nil

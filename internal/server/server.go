@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/carabiner-dev/burnafter/internal/common"
-	pb "github.com/carabiner-dev/burnafter/internal/common"
-	"github.com/carabiner-dev/burnafter/options"
 	"google.golang.org/grpc"
+
+	"github.com/carabiner-dev/burnafter/internal/common"
+	"github.com/carabiner-dev/burnafter/options"
 )
 
 // StoredSecret represents a secret stored in memory
@@ -32,7 +32,7 @@ type StoredSecret struct {
 
 // Server implements the BurnAfter gRPC service
 type Server struct {
-	pb.UnimplementedBurnAfterServer
+	common.UnimplementedBurnAfterServer
 
 	// Server options
 	options *options.Server
@@ -81,14 +81,15 @@ func (s *Server) Run() error {
 	}
 
 	// Create Unix domain socket listener
-	listener, err := net.Listen("unix", s.options.SocketPath)
+	lc := net.ListenConfig{}
+	listener, err := lc.Listen(context.Background(), "unix", s.options.SocketPath)
 	if err != nil {
 		return fmt.Errorf("failed to listen on socket: %w", err)
 	}
-	defer listener.Close()
+	defer listener.Close() //nolint:errcheck
 
 	// Set socket permissions to be restrictive (owner only)
-	if err := os.Chmod(s.options.SocketPath, 0600); err != nil {
+	if err := os.Chmod(s.options.SocketPath, 0o600); err != nil {
 		return fmt.Errorf("failed to set socket permissions: %w", err)
 	}
 
@@ -101,7 +102,7 @@ func (s *Server) Run() error {
 	s.grpcServer = grpc.NewServer(
 		grpc.Creds(NewPeerCredentials()),
 	)
-	pb.RegisterBurnAfterServer(s.grpcServer, s)
+	common.RegisterBurnAfterServer(s.grpcServer, s)
 
 	// Start cleanup goroutine
 	go s.cleanupExpiredSecrets()
@@ -139,9 +140,9 @@ func (s *Server) updateActivity() {
 }
 
 // Ping implements the Ping RPC
-func (s *Server) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
+func (s *Server) Ping(ctx context.Context, req *common.PingRequest) (*common.PingResponse, error) {
 	s.updateActivity()
-	return &pb.PingResponse{Alive: true}, nil
+	return &common.PingResponse{Alive: true}, nil
 }
 
 // cleanupExpiredSecrets runs as a go routine and it periodically removes

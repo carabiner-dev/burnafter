@@ -14,7 +14,7 @@ import (
 
 // GetPeerCredentials extracts PID, UID, and GID from the Unix socket connection
 // coming in from the client.
-func GetPeerCredentials(conn *net.UnixConn) (pid int32, uid uint32, gid uint32, err error) {
+func GetPeerCredentials(conn *net.UnixConn) (pid int32, uid, gid uint32, err error) {
 	// Get the underlying file descriptor of the incoming
 	// connection.
 	rawConn, err := conn.SyscallConn()
@@ -30,7 +30,6 @@ func GetPeerCredentials(conn *net.UnixConn) (pid int32, uid uint32, gid uint32, 
 	err = rawConn.Control(func(fd uintptr) {
 		ucred, credErr = syscall.GetsockoptUcred(int(fd), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
 	})
-
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("trying to control raw connection: %w", err)
 	}

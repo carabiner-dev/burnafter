@@ -81,26 +81,29 @@ func main() {
 		clientOpts.SocketPath = *socketPath
 	}
 	clientOpts.Debug = *debug
-
+	var err error
 	// Handle commands
 	switch command {
 	case "store":
-		runStore(context.Background(), clientOpts, args[1:])
+		err = runStore(context.Background(), clientOpts, args[1:])
 	case "get":
-		runGet(context.Background(), clientOpts, args[1:])
+		err = runGet(context.Background(), clientOpts, args[1:])
 	case "ping":
-		runPing(context.Background(), clientOpts)
+		err = runPing(context.Background(), clientOpts)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", command)
 		flag.Usage()
 		os.Exit(1)
 	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
 }
 
-func runStore(ctx context.Context, opts *options.Client, args []string) {
+func runStore(ctx context.Context, opts *options.Client, args []string) error {
 	if len(args) < 2 {
-		fmt.Fprintln(os.Stderr, "Usage: burnafter store <name> <secret> [ttl_seconds] [absolute_expiration_seconds]")
-		os.Exit(1)
+		return fmt.Errorf("usage: burnafter store <name> <secret> [ttl_seconds] [absolute_expiration_seconds]")
 	}
 
 	name := args[0]
@@ -112,8 +115,7 @@ func runStore(ctx context.Context, opts *options.Client, args []string) {
 		var err error
 		ttl, err = strconv.ParseInt(args[2], 10, 64)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid TTL: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("invalid TTL: %w", err)
 		}
 	}
 
@@ -121,73 +123,66 @@ func runStore(ctx context.Context, opts *options.Client, args []string) {
 		var err error
 		absoluteExpiration, err = strconv.ParseInt(args[3], 10, 64)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid absolute expiration: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("invalid absolute expiration: %w", err)
 		}
 	}
 
 	c := burnafter.NewClient(opts)
-	if err := c.Connect(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to connect: %v\n", err)
-		os.Exit(1)
+	if err := c.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
 	}
-	defer c.Close()
+	defer c.Close() //nolint:errcheck
 
 	if err := c.Store(ctx, name, secret, ttl, absoluteExpiration); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to store secret: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to store secret: %w", err)
 	}
 
-	fmt.Printf("Secret '%s' stored successfully\n", name)
+	fmt.Printf("Secret %q stored successfully\n", name)
+	return nil
 }
 
-func runGet(ctx context.Context, opts *options.Client, args []string) {
+func runGet(ctx context.Context, opts *options.Client, args []string) error {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Usage: burnafter get <name>")
-		os.Exit(1)
+		return fmt.Errorf("usage: burnafter get <name>")
 	}
 
 	name := args[0]
 
 	c := burnafter.NewClient(opts)
-	if err := c.Connect(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to connect: %v\n", err)
-		os.Exit(1)
+	if err := c.Connect(ctx); err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
 	}
-	defer c.Close()
+	defer c.Close() //nolint:errcheck
 
 	secret, err := c.Get(ctx, name)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to get secret: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to get secret: %w", err)
 	}
 
 	// Output only the secret value (for easy piping)
 	fmt.Println(secret)
+	return nil
 }
 
-func runPing(ctx context.Context, opts *options.Client) {
+func runPing(ctx context.Context, opts *options.Client) error {
 	// Create the new client, but don't connect
 	c := burnafter.NewClient(opts)
 
 	// If the server is not running, stop here to avoid
 	// starting the daemon when just checking.
-	if !c.IsServerRunning() {
-		fmt.Fprintf(os.Stderr, "Server is not running\n")
-		os.Exit(1)
+	if !c.IsServerRunning(ctx) {
+		return fmt.Errorf("server is not running")
 	}
-	defer c.Close()
 
-	if err := c.Connect(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error connecting to server: %v\n", err)
-		os.Exit(1)
+	if err := c.Connect(ctx); err != nil {
+		return fmt.Errorf("error connecting to server: %w", err)
 	}
-	defer c.Close()
+	defer c.Close() //nolint:errcheck
 
 	if err := c.Ping(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Server ping failed: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("server ping failed: %w", err)
 	}
 
-	fmt.Println("Server is alive")
+	fmt.Println("server is alive")
+	return nil
 }

@@ -13,11 +13,12 @@ import (
 	"syscall"
 	"time"
 
+	"google.golang.org/grpc"
+
 	pb "github.com/carabiner-dev/burnafter/internal/common"
 	"github.com/carabiner-dev/burnafter/internal/embedded"
 	"github.com/carabiner-dev/burnafter/internal/server"
 	"github.com/carabiner-dev/burnafter/options"
-	"google.golang.org/grpc"
 )
 
 // Client is the burnafter client.
@@ -58,21 +59,21 @@ func generateSocketPath() string {
 // Connect establishes the connection to the server.
 // If the server is not running, this function spawns the
 // forked process to start listening.
-func (c *Client) Connect() error {
+func (c *Client) Connect(ctx context.Context) error {
 	// Check if server is already running
-	if c.IsServerRunning() {
+	if c.IsServerRunning(ctx) {
 		return c.dial()
 	}
 
 	// Server is not running, start it
-	if err := c.startServer(); err != nil {
+	if err := c.startServer(ctx); err != nil {
 		return fmt.Errorf("starting server: %w", err)
 	}
 
 	// Wait for the server to be ready
 	for range 10 {
 		time.Sleep(100 * time.Millisecond)
-		if c.IsServerRunning() {
+		if c.IsServerRunning(ctx) {
 			return c.dial()
 		}
 	}
@@ -81,12 +82,13 @@ func (c *Client) Connect() error {
 }
 
 // isServerRunning checks if the server is responding
-func (c *Client) IsServerRunning() bool {
-	conn, err := net.DialTimeout("unix", c.options.SocketPath, 1*time.Second)
+func (c *Client) IsServerRunning(ctx context.Context) bool {
+	d := net.Dialer{Timeout: 1 * time.Second}
+	conn, err := d.DialContext(ctx, "unix", c.options.SocketPath)
 	if err != nil {
 		return false
 	}
-	conn.Close() //nolint:errcheck
+	conn.Close() //nolint:errcheck,gosec
 	return true
 }
 
@@ -94,7 +96,8 @@ func (c *Client) IsServerRunning() bool {
 func (c *Client) dial() error {
 	// Custom dialer for Unix domain sockets
 	dialer := func(ctx context.Context, addr string) (net.Conn, error) {
-		return net.Dial("unix", c.options.SocketPath)
+		var d net.Dialer
+		return d.DialContext(ctx, "unix", c.options.SocketPath)
 	}
 
 	// Use "passthrough" as the scheme and a dummy IP address,
@@ -117,22 +120,22 @@ func (c *Client) dial() error {
 // startServer launches the server as a daemon by executing
 // the embedded server binary. It attempts to execute from memory first (memfd_create),
 // falling back to cache directory extraction if memory execution is blocked (e.g., by SELinux).
-func (c *Client) startServer() error {
+func (c *Client) startServer(ctx context.Context) error {
 	var cmd *exec.Cmd
 	var memFile *os.File
 	var tempServerPath string // Track temp file for cleanup
 
 	// Try memfd approach first (better security, no disk writes)
-	memfd, err := embedded.CreateMemfdServer()
+	memfd, err := embedded.CreateMemfdServer(ctx)
 	if err == nil {
 		// Convert the raw fd to an *os.File so we can pass it via ExtraFiles
 		memFile = os.NewFile(uintptr(memfd), "burnafter-server")
 		if memFile != nil {
-			defer memFile.Close()
+			defer memFile.Close() //nolint:errcheck
 
 			// Execute the binary via /proc/self/fd/3
 			// ExtraFiles are mapped starting at fd 3 in the child process
-			cmd = exec.Command("/proc/self/fd/3")
+			cmd = exec.CommandContext(ctx, "/proc/self/fd/3")
 			cmd.ExtraFiles = []*os.File{memFile}
 
 			if c.options.Debug {
@@ -148,13 +151,13 @@ func (c *Client) startServer() error {
 			fmt.Fprintf(os.Stderr, "memfd unavailable, falling back to temp file...\n")
 		}
 
-		serverPath, err := embedded.ExtractServerBinaryToTemp()
+		serverPath, err := embedded.ExtractServerBinaryToTemp(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to extract server binary: %w", err)
 		}
 		tempServerPath = serverPath
 
-		cmd = exec.Command(serverPath)
+		cmd = exec.CommandContext(ctx, serverPath) //nolint:gosec // Path is controlled
 	}
 
 	// Marshal the client options to JSON to pass to the server
@@ -196,7 +199,7 @@ func (c *Client) startServer() error {
 	if err := cmd.Start(); err != nil {
 		// Clean up temp file if it was created
 		if tempServerPath != "" {
-			os.Remove(tempServerPath)
+			os.Remove(tempServerPath) //nolint:errcheck,gosec
 		}
 
 		// If memfd execution failed (likely SELinux), try temp file fallback
@@ -205,16 +208,16 @@ func (c *Client) startServer() error {
 				fmt.Fprintf(os.Stderr, "memfd execution blocked, retrying with temp file...\n")
 			}
 
-			memFile.Close() //nolint:errcheck // Close the memfd, we're not using it
+			memFile.Close() //nolint:errcheck,gosec // Close the memfd, we're not using it
 
 			// Extract the binary to a temp file
-			serverPath, extractErr := embedded.ExtractServerBinaryToTemp()
+			serverPath, extractErr := embedded.ExtractServerBinaryToTemp(ctx)
 			if extractErr != nil {
 				return fmt.Errorf("failed to extract server binary: %w", extractErr)
 			}
 			tempServerPath = serverPath
 
-			cmd = exec.Command(serverPath)
+			cmd = exec.CommandContext(ctx, serverPath) //nolint:gosec // Path is controlled
 
 			// Marshal options and pass as first argument
 			cmd.Args = append([]string{cmd.Path, string(optionsJSON)}, cmd.Args[1:]...)
@@ -241,7 +244,7 @@ func (c *Client) startServer() error {
 			if err := cmd.Start(); err != nil {
 				// Clean up temp file on failure
 				if tempServerPath != "" {
-					os.Remove(tempServerPath)
+					os.Remove(tempServerPath) //nolint:errcheck,gosec
 				}
 				return fmt.Errorf("failed to start server process: %w", err)
 			}
@@ -259,12 +262,12 @@ func (c *Client) startServer() error {
 			if c.options.Debug {
 				fmt.Fprintf(os.Stderr, "Removing temp server file: %s\n", path)
 			}
-			os.Remove(path)
+			os.Remove(path) //nolint:errcheck,gosec
 		}(tempServerPath)
 	}
 
 	// Release the process and don't wait for it so it doesn't become a zombie
-	go cmd.Wait()
+	go cmd.Wait() //nolint:errcheck
 
 	return nil
 }

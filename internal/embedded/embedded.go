@@ -6,6 +6,7 @@ package embedded
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -35,7 +36,7 @@ func getServerBinary() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 	}
-	defer gzReader.Close()
+	defer gzReader.Close() //nolint:errcheck
 
 	// Read decompressed data
 	decompressed, err := io.ReadAll(gzReader)
@@ -50,7 +51,7 @@ func getServerBinary() ([]byte, error) {
 // randomized name. Returns the path to the extracted binary.
 //
 // On MacOS it will attempt to remove the quarantine bit from the extracted file.
-func ExtractServerBinaryToTemp() (string, error) {
+func ExtractServerBinaryToTemp(ctx context.Context) (string, error) {
 	// Get the decompressed server binary for this platform
 	serverBinary, err := getServerBinary()
 	if err != nil {
@@ -66,24 +67,25 @@ func ExtractServerBinaryToTemp() (string, error) {
 
 	// Write the server binary
 	if _, err := tmpFile.Write(serverBinary); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+		tmpFile.Close()    //nolint:errcheck,gosec
+		os.Remove(tmpPath) //nolint:errcheck,gosec
 		return "", fmt.Errorf("failed to write server binary: %w", err)
 	}
 
 	// Make it executable
-	if err := tmpFile.Chmod(0700); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+	if err := tmpFile.Chmod(0o700); err != nil {
+		tmpFile.Close()    //nolint:errcheck,gosec
+		os.Remove(tmpPath) //nolint:errcheck,gosec
 		return "", fmt.Errorf("failed to make binary executable: %w", err)
 	}
 
-	tmpFile.Close()
+	tmpFile.Close() //nolint:errcheck,gosec
 
 	// On macOS, remove quarantine attribute to allow execution
 	if runtime.GOOS == "darwin" {
-		cmd := exec.Command("xattr", "-d", "com.apple.quarantine", tmpPath)
-		_ = cmd.Run() // Ignore errors - attribute might not exist
+		cmd := exec.CommandContext(ctx, "xattr", "-d", "com.apple.quarantine", tmpPath) //nolint:gosec // path is controlled
+		//  Ignore if it fails, the attribute might not be set
+		_ = cmd.Run() //nolint:errcheck
 	}
 
 	return tmpPath, nil

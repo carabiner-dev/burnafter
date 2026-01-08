@@ -13,7 +13,7 @@ import (
 )
 
 // GetClientBinaryInfo extracts the binary path and hash from the client's PID
-func GetClientBinaryInfo(pid int32) (binaryPath string, binaryHash string, err error) {
+func GetClientBinaryInfo(pid int32) (binaryPath, binaryHash string, err error) {
 	binaryPath, err = getBinaryPath(pid)
 	if err != nil {
 		return "", "", fmt.Errorf("reading binary path %q: %w", binaryPath, err)
@@ -34,7 +34,7 @@ func HashFile(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer file.Close() //nolint:errcheck
 
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, file); err != nil {
