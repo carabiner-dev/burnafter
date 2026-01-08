@@ -14,11 +14,9 @@ import (
 
 // GetClientBinaryInfo extracts the binary path and hash from the client's PID
 func GetClientBinaryInfo(pid int32) (binaryPath string, binaryHash string, err error) {
-	// Read the /proc/[pid]/exe symlink to get the binary path
-	exePath := fmt.Sprintf("/proc/%d/exe", pid)
-	binaryPath, err = os.Readlink(exePath)
+	binaryPath, err = getBinaryPath(pid)
 	if err != nil {
-		return "", "", fmt.Errorf("reading binary path: %w", err)
+		return "", "", fmt.Errorf("reading binary path %q: %w", binaryPath, err)
 	}
 
 	// Compute SHA256 hash of the binary
