@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/carabiner-dev/burnafter/internal/common"
-	internalsecrets "github.com/carabiner-dev/burnafter/internal/secrets"
+	isecrets "github.com/carabiner-dev/burnafter/internal/secrets"
 	"github.com/carabiner-dev/burnafter/options"
 	"github.com/carabiner-dev/burnafter/secrets"
 )
@@ -54,10 +54,30 @@ func NewServer(opts *options.Server) (*Server, error) {
 		return nil, fmt.Errorf("failed to generate session ID: %w", err)
 	}
 
-	// Create the server with in-memory storage
+	// Initialize the storage driver
+	var storage secrets.Storage
+
+	// In Linux, try to use the kernel keyring driver to store the encrypted secrets.
+	keyringStorage, err := isecrets.NewKeyringStorage()
+	if err == nil {
+		if opts.Debug {
+			log.Printf("Using kernel keyring storage for secrets")
+		}
+		storage = keyringStorage
+	}
+
+	// .. but fall back to memory storage if not available
+	if storage == nil {
+		if opts.Debug {
+			log.Printf("Kernel keyring not available, using memory storage: %v", err)
+		}
+		storage = isecrets.NewMemoryStorage()
+	}
+
+	// Create the server
 	s := &Server{
 		secrets:      map[string]*secrets.Metadata{},
-		storage:      internalsecrets.NewMemoryStorage(),
+		storage:      storage,
 		sessionID:    sessionID,
 		lastActivity: time.Now(),
 		options:      opts,
@@ -69,7 +89,7 @@ func NewServer(opts *options.Server) (*Server, error) {
 
 // Run starts the server and blocks until shutdown
 func (s *Server) Run() error {
-	// Remove existing socket file if it exists
+	// Remove existing socket file if it already exists
 	if err := os.RemoveAll(s.options.SocketPath); err != nil {
 		return fmt.Errorf("failed to remove existing socket: %w", err)
 	}
@@ -174,7 +194,7 @@ func (s *Server) cleanupExpiredSecrets() {
 						log.Printf("Removing expired secret '%s' (reason: %s)", name, reason)
 					}
 					delete(s.secrets, name)
-					// Also delete from storage backend
+					// Also delete from the storage backend
 					_ = s.storage.Delete(context.Background(), name) //nolint:errcheck
 				}
 			}
