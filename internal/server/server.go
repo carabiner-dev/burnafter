@@ -62,7 +62,7 @@ func NewServer(ctx context.Context, opts *options.Server) (*Server, error) {
 	var storage secrets.Storage
 
 	// In Linux, try to use the kernel keyring driver to store the encrypted secrets.
-	keyringStorage, err := isecrets.NewKeyringStorage()
+	keyringStorage, err := isecrets.NewKeyringStorage(ctx)
 	if err == nil {
 		clog.FromContext(ctx).Debug("Using kernel keyring storage for secrets")
 		storage = keyringStorage
