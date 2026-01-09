@@ -28,14 +28,18 @@ falls back to encrypted file storage.
         │  (Daemon)   │
         ├─────────────┤
         │  Secrets    │
-        │ (Encrypted  │
-        │  in Memory) │
+        │ Linux:      │
+        │  → Kernel   │
+        │    Keyring  │
+        │ Others:     │
+        │  → Memory   │
         └─────────────┘
 ```
 
 **Characteristics:**
 
-- Secrets stored in memory only (never written to disk)
+- **Linux**: Secrets stored in kernel keyring (never swapped to disk, process-isolated)
+- **Others**: Secrets stored in memory only (never written to disk)
 - Unix socket communication with peer credential verification
 - Server auto-starts on first use
 - Server auto-shuts down when all secrets expire or after inactivity timeout
@@ -93,10 +97,11 @@ falls back to encrypted file storage.
   2. Client nonce matches server's compile-time nonce
   3. Client UID/PID from socket credentials
 
-**Memory-Only Storage:**
+**Storage:**
 
-- Secrets never written to disk
-- Encrypted in memory using AES-256-GCM
+- **Linux**: Secrets stored in kernel keyring (process-scoped, never swapped to disk)
+- **Others**: Secrets encrypted in memory using AES-256-GCM
+- Secrets never written to disk in either case
 - Keys derived on-demand, never stored
 - Server restart makes all secrets unrecoverable
 
@@ -163,7 +168,7 @@ Key = PBKDF2-SHA256(
 
 | Feature | Server Mode | Fallback Mode |
 | --- | --- | --- |
-| **Secret Storage** | Memory only | Encrypted files in `/tmp` |
+| **Secret Storage** | Linux: Kernel keyring<br>Others: Memory only | Encrypted files in `/tmp` |
 | **Persistence** | Lost on restart | Persists until TTL/OS cleanup |
 | **Authentication** | Unix peer credentials | Binary hash + nonce |
 | **Encryption** | AES-256-GCM | AES-256-GCM |
@@ -194,9 +199,10 @@ Key = PBKDF2-SHA256(
 
 4. **Memory Attacks**:
    - Memory dumps may reveal secrets in both modes
-   - Server mode: Secrets in server process memory
+   - Server mode (Linux): Secrets in kernel keyring (harder to extract than user-space memory)
+   - Server mode (Others): Secrets in server process memory
    - Fallback mode: Secrets briefly in client process during encrypt/decrypt
-   - Mitigation: Use memory locking if available
+   - Mitigation: Use memory locking if available, prefer Linux for kernel keyring protection
 
 ### Server Mode Specific
 
@@ -284,20 +290,23 @@ Key = PBKDF2-SHA256(
 
 ### Linux
 
-- Server mode: Uses `memfd_create` for in-memory execution (when available)
-- Fallback: Used when SELinux blocks memfd execution
-- Peer credentials: `SO_PEERCRED` socket option
+- **Secret Storage**: Uses the kernel keyring (`KEY_SPEC_PROCESS_KEYRING`) for maximum security
+  - Secrets stored in kernel space (never swapped to disk)
+  - Process-isolated (automatic cleanup when server exits)
+  - Falls back to memory storage if keyring unavailable
+- **Server Execution**: Uses `memfd_create` for in-memory execution (when available)
+  - Fallback to temp file if SELinux blocks memfd execution
+- **Peer Credentials**: `SO_PEERCRED` socket option for client authentication
 
 ### macOS
 
 - Server mode: Extracts server binary to `/tmp` (no memfd equivalent)
-- Quarantine: Automatically removes `com.apple.quarantine` attribute
 - Peer credentials: `LOCAL_PEERCRED` socket option
 
 ### Windows (Future)
 
 - Server mode: Not yet supported (no Unix sockets)
-- Fallback mode: Will be primary mechanism
+- Fallback mode: Primary mechanism, much less secure as it is file-based
 - Named pipes: Potential future server mode transport
 
 ## Cryptographic Details
@@ -330,7 +339,7 @@ sessionID (random 32 hex chars)
 **Fallback Mode:**
 
 ```go
-clientNonce (compile-time constant)
+clientNonce (client defined constant)
 + binaryHash (SHA256 of executable)
 + secretName (user-provided)
 ```

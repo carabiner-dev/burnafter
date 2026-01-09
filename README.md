@@ -7,18 +7,20 @@ An ephemeral secret storage library and command line utility with binary verific
 ## Overview
 
 `burnafter` is a Go utility and library that provides
-**time-limited, in-memory secret storage** with strong binary authentication.
+**time-limited, in-memory secret storage** with strong binary authentication and
+persistence in the system keyring.
+
 It's designed for scenarios where you need to store sensitive data temporarily
-(like API keys, tokens, or passwords) and want to ensure only your specific
-application binary can access it.
+(like API keys, tokens, or passwords) that survives across command invocations
+and want to ensure only a specific application binary can access it.
 
 ## Key Features
 
 - **Minimal dependencies**: Almost no expternal dependencies
-- **Ephemeral Storage**: Secrets stored in memory only, never written to disk
+- **Ephemeral Storage**: Secrets stored in the system keyring or in memory, never written to disk (unless the fallback mechanism kicks in)
 - **Binary Verification**: Only the exact binary that stored a secret can retrieve it (via SHA256 hash verification)
-- **Time-Limited**: Secrets expire based on inactivity timeout or an absolute deadline
-- **Process Isolation**: Uses server session IDs to prevent key recovery if server restarts
+- **Time-Limited**: Secrets expire based on inactivity timeout or at an absolute deadline
+- **Process Isolation**: Uses server session IDs to prevent replaying older keys on server restarts
 - **On-Demand Key Derivation**: Encryption keys derived when needed, never stored in memory
 - **Encrypted at Rest**: Secrets encrypted in memory using AES-256-GCM
 - **Automatic Cleanup**: Server shuts down after inactivity period or secret expiration
@@ -41,12 +43,17 @@ client authentication and secret encryption and in-memory storage:
 
 ```mermaid
 graph TD
-    Client["Client<br/>(Binary)"]
+    Client["Client Binary<br/>(your app)"]
     subgraph daemon["🔥 burnafter daemon"]
-      Secrets["Secrets<br/>(Encrypted in Memory)"]
+      Auth(Client binary authorization)
+    end
+
+    subgraph keyring["🐧system keyring"]
+      Secrets["Secrets<br/>(Encrypted)"]
     end
 
     Client -->|Unix Socket + gRPC| daemon
+    daemon --> keyring
 
     style Client fill:#e1f5ff,stroke:#01579b,stroke-width:2px
     style Secrets font-size:0.9em,fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
@@ -70,14 +77,15 @@ graph TD
    ```
 
 3. **Storage**:
-   - Secret encrypted with derived key
-   - Key never stored (derived on-demand)
+   - Secrets are encrypted with a derived key
+   - Keys are never stored (derived on-demand)
    - Server session ID lost on restart (makes secrets unrecoverable)
+   - Secrets are kept in the system keyring, or in memory only if keyring not avilable (see fallback mechanism)
 
 4. **Access Control**:
-   - Server verifies client binary hash matches stored hash
-   - Server checks compile-time nonce matches
-   - Secrets expire based on TTL
+   - Server verifies client binary hash matches the expected client digest
+   - Server checks client-defined nonce matches
+   - Secrets expire based on TTL or on inactivity threshold
 
 ### Threat Model
 
@@ -88,15 +96,14 @@ other protection mechhanisms.
 #### Protects Against
 
 - Accidental secret leakage to logs/files
-- Unauthorized binaries accessing secrets
-- Secrets persisting after binary updates
-- Key exposure (keys derived on-demand, never stored)
+- Other programs accessing secrets
+- Long lived secrets persisting in the filesystem
+- Key exposure
 
 #### Does NOT Protect Against
 
-- Same-user processes with memory inspection capabilities
 - Debuggers attached to server process
-- Root/admin users
+- Root/admin users attaching to server process
 
 ## Usage
 
