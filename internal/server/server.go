@@ -15,20 +15,10 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/carabiner-dev/burnafter/internal/common"
+	internalsecrets "github.com/carabiner-dev/burnafter/internal/secrets"
 	"github.com/carabiner-dev/burnafter/options"
+	"github.com/carabiner-dev/burnafter/secrets"
 )
-
-// StoredSecret represents a secret stored in memory
-type StoredSecret struct {
-	Name              string        // Name of the secret
-	EncryptedData     []byte        // Encrypted secret data
-	Salt              []byte        // Salt used for key derivation
-	ClientBinaryHash  string        // Hash of the client binary that stored it
-	ClientNonce       string        // Compile-time nonce from client
-	InactivityTTL     time.Duration // TTL for inactivity-based expiration
-	AbsoluteExpiresAt *time.Time    // Optional absolute expiration time (nil = no absolute expiration)
-	LastAccessed      time.Time     // Last time this secret was accessed
-}
 
 // Server implements the BurnAfter gRPC service
 type Server struct {
@@ -37,9 +27,12 @@ type Server struct {
 	// Server options
 	options *options.Server
 
-	// secrets is the key-value map that stores th encrypted secrets
-	secrets   map[string]*StoredSecret
+	// secrets is the key-value map that stores secret metadata
+	secrets   map[string]*secrets.Metadata
 	secretsMu sync.RWMutex
+
+	// storage is the backend that stores the actual encrypted secret data
+	storage secrets.Storage
 
 	// Session ID is the server's secret nonce generated as part of the
 	// data required to derive the encryption key.
@@ -61,9 +54,10 @@ func NewServer(opts *options.Server) (*Server, error) {
 		return nil, fmt.Errorf("failed to generate session ID: %w", err)
 	}
 
-	// Create the server
+	// Create the server with in-memory storage
 	s := &Server{
-		secrets:      map[string]*StoredSecret{},
+		secrets:      map[string]*secrets.Metadata{},
+		storage:      internalsecrets.NewMemoryStorage(),
 		sessionID:    sessionID,
 		lastActivity: time.Now(),
 		options:      opts,
@@ -180,6 +174,8 @@ func (s *Server) cleanupExpiredSecrets() {
 						log.Printf("Removing expired secret '%s' (reason: %s)", name, reason)
 					}
 					delete(s.secrets, name)
+					// Also delete from storage backend
+					_ = s.storage.Delete(context.Background(), name) //nolint:errcheck
 				}
 			}
 

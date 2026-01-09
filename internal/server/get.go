@@ -39,9 +39,9 @@ func (s *Server) Get(ctx context.Context, req *common.GetRequest) (*common.GetRe
 		}, nil
 	}
 
-	// Retrieve the secret
+	// Retrieve the secret metadata
 	s.secretsMu.Lock()
-	stored, exists := s.secrets[req.Name]
+	metadata, exists := s.secrets[req.Name]
 	if !exists {
 		s.secretsMu.Unlock()
 		return &common.GetResponse{
@@ -53,9 +53,11 @@ func (s *Server) Get(ctx context.Context, req *common.GetRequest) (*common.GetRe
 	now := time.Now()
 
 	// Check if secret expired due to inactivity
-	if time.Since(stored.LastAccessed) > stored.InactivityTTL {
+	if time.Since(metadata.LastAccessed) > metadata.InactivityTTL {
 		delete(s.secrets, req.Name)
 		s.secretsMu.Unlock()
+		// Also delete from storage backend
+		_ = s.storage.Delete(ctx, req.Name) //nolint:errcheck
 		return &common.GetResponse{
 			Success: false,
 			Error:   "secret has expired due to inactivity",
@@ -63,36 +65,37 @@ func (s *Server) Get(ctx context.Context, req *common.GetRequest) (*common.GetRe
 	}
 
 	// Check if secret has expired due to absolute expiration
-	if stored.AbsoluteExpiresAt != nil && now.After(*stored.AbsoluteExpiresAt) {
+	if metadata.AbsoluteExpiresAt != nil && now.After(*metadata.AbsoluteExpiresAt) {
 		delete(s.secrets, req.Name)
 		s.secretsMu.Unlock()
+		// Also delete from storage backend
+		_ = s.storage.Delete(ctx, req.Name) //nolint:errcheck
 		return &common.GetResponse{
 			Success: false,
 			Error:   "secret has expired (absolute deadline reached)",
 		}, nil
 	}
 
-	// Verify tjat client binary hash matches
+	// Update last accessed time
+	metadata.LastAccessed = time.Now()
+	s.secretsMu.Unlock()
+
+	// Retrieve the actual secret from storage backend
+	stored, err := s.storage.Get(ctx, req.Name)
+	if err != nil {
+		return &common.GetResponse{
+			Success: false,
+			Error:   fmt.Sprintf("failed to retrieve secret from storage: %v", err),
+		}, nil
+	}
+
+	// Verify that client binary hash matches
 	if stored.ClientBinaryHash != clientHash {
-		s.secretsMu.Unlock()
 		return &common.GetResponse{
 			Success: false,
 			Error:   "client binary hash mismatch - unauthorized",
 		}, nil
 	}
-
-	// Verify client nonce matches
-	if stored.ClientNonce != req.ClientNonce {
-		s.secretsMu.Unlock()
-		return &common.GetResponse{
-			Success: false,
-			Error:   "client nonce mismatch - unauthorized",
-		}, nil
-	}
-
-	// Update last accessed time
-	stored.LastAccessed = time.Now()
-	s.secretsMu.Unlock()
 
 	// Derive the key again
 	key, err := common.DeriveKey(clientHash, req.ClientNonce, s.sessionID, req.Name, stored.Salt)

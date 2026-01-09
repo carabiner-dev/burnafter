@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/carabiner-dev/burnafter/internal/common"
+	"github.com/carabiner-dev/burnafter/secrets"
 )
 
 // Store implements the Store RPC. Takes a storage request to save aaa secret
@@ -112,15 +113,26 @@ func (s *Server) Store(ctx context.Context, req *common.StoreRequest) (*common.S
 		absoluteExpiresAt = &t
 	}
 
-	// Store the encrypted secret
+	// Create the stored secret with encrypted data
+	stored := &secrets.Payload{
+		EncryptedData:    encrypted,
+		Salt:             salt,
+		ClientBinaryHash: clientHash,
+	}
+
+	// Store the encrypted secret in the storage backend
+	if err := s.storage.Store(ctx, req.Name, stored); err != nil {
+		return &common.StoreResponse{
+			Success: false,
+			Error:   fmt.Sprintf("failed to store secret in backend: %v", err),
+		}, nil
+	}
+
+	// Store only metadata in server memory for lifecycle management
 	now := time.Now()
 	s.secretsMu.Lock()
-	s.secrets[req.Name] = &StoredSecret{
+	s.secrets[req.Name] = &secrets.Metadata{
 		Name:              req.Name,
-		EncryptedData:     encrypted,
-		Salt:              salt,
-		ClientBinaryHash:  clientHash,
-		ClientNonce:       req.ClientNonce,
 		InactivityTTL:     ttl,
 		AbsoluteExpiresAt: absoluteExpiresAt,
 		LastAccessed:      now,
