@@ -14,7 +14,7 @@ import (
 )
 
 func TestKeyringStorageStoreAndGet(t *testing.T) {
-	storage, err := NewKeyringStorage()
+	storage, err := NewKeyringStorage(t.Context())
 	if err != nil {
 		t.Skipf("Skipping keyring test: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestKeyringStorageStoreAndGet(t *testing.T) {
 }
 
 func TestKeyringStorageDelete(t *testing.T) {
-	storage, err := NewKeyringStorage()
+	storage, err := NewKeyringStorage(t.Context())
 	if err != nil {
 		t.Skipf("Skipping keyring test: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestKeyringStorageDelete(t *testing.T) {
 }
 
 func TestKeyringStorageOverwrite(t *testing.T) {
-	storage, err := NewKeyringStorage()
+	storage, err := NewKeyringStorage(t.Context())
 	if err != nil {
 		t.Skipf("Skipping keyring test: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestKeyringStorageOverwrite(t *testing.T) {
 }
 
 func TestKeyringStorageGetNonExistent(t *testing.T) {
-	storage, err := NewKeyringStorage()
+	storage, err := NewKeyringStorage(t.Context())
 	if err != nil {
 		t.Skipf("Skipping keyring test: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestKeyringStoragePersistsAcrossInstances(t *testing.T) {
 	ctx := context.Background()
 
 	// Create first storage instance and store a secret
-	storage1, err := NewKeyringStorage()
+	storage1, err := NewKeyringStorage(t.Context())
 	if err != nil {
 		t.Skipf("Skipping keyring test: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestKeyringStoragePersistsAcrossInstances(t *testing.T) {
 	}
 
 	// Create a NEW storage instance (simulating server still running but new request)
-	storage2, err := NewKeyringStorage()
+	storage2, err := NewKeyringStorage(t.Context())
 	if err != nil {
 		t.Skipf("Skipping keyring test: %v", err)
 	}
