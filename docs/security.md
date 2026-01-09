@@ -1,5 +1,5 @@
 # Security and System Architecture
-
+<!-- markdownlint-disable MD033 MD024 -->
 The ephemeral storage of burnafter is handled by either a gRPC server launched
 by the client library (server mode) or encrypted file-based storage (fallback
 mode). The client library automatically selects the appropriate mode based on
@@ -27,7 +27,7 @@ falls back to encrypted file storage.
         │   Server    │
         │  (Daemon)   │
         ├─────────────┤
-        │  Secrets    │
+        │ Secrets     │
         │ Linux:      │
         │  → Kernel   │
         │    Keyring  │
@@ -36,7 +36,7 @@ falls back to encrypted file storage.
         └─────────────┘
 ```
 
-**Characteristics:**
+#### Characteristics
 
 - **Linux**: Secrets stored in kernel keyring (never swapped to disk, process-isolated)
 - **Others**: Secrets stored in memory only (never written to disk)
@@ -65,7 +65,7 @@ falls back to encrypted file storage.
         └─────────────┘
 ```
 
-**Characteristics:**
+#### Characteristics
 
 - Secrets encrypted with AES-256-GCM and stored as files in `/tmp`
 - Automatic when server startup fails or `NoServer` option is set
@@ -73,7 +73,7 @@ falls back to encrypted file storage.
 - Deterministic file paths allow secret retrieval across invocations
 - Weaker security than server mode (secrets persist on disk)
 
-**Fallback Triggers:**
+#### Fallback Triggers
 
 1. `NoServer` option explicitly set in client options
 2. Server startup fails (permissions, SELinux, etc.)
@@ -83,13 +83,13 @@ falls back to encrypted file storage.
 
 ### Server Mode Security
 
-**Binary Isolation:**
+#### Binary Isolation
 
 - Socket path derived from binary SHA256 hash: `/tmp/burnafter-{hash[:16]}.sock`
 - Different binary versions cannot access each other's secrets
 - Recompiling with different nonce creates isolated secret store
 
-**Authentication:**
+#### Authentication
 
 - Unix socket peer credential verification (`SO_PEERCRED` on Linux, `LOCAL_PEERCRED` on macOS)
 - Server validates:
@@ -97,7 +97,7 @@ falls back to encrypted file storage.
   2. Client nonce matches server's compile-time nonce
   3. Client UID/PID from socket credentials
 
-**Storage:**
+#### Storage
 
 - **Linux**: Secrets stored in kernel keyring (process-scoped, never swapped to disk)
 - **Others**: Secrets encrypted in memory using AES-256-GCM
@@ -105,7 +105,7 @@ falls back to encrypted file storage.
 - Keys derived on-demand, never stored
 - Server restart makes all secrets unrecoverable
 
-**Key Derivation:**
+#### Key Derivation
 
 ```text
 Key = AES256(
@@ -115,7 +115,7 @@ Key = AES256(
 )
 ```
 
-**Resource Limits:**
+#### Resource Limits
 
 - Maximum 100 secrets per server (configurable via `MaxSecrets`)
 - Maximum 1 MB per secret (configurable via `MaxSecretSize`)
@@ -123,14 +123,14 @@ Key = AES256(
 
 ### Fallback Mode Security
 
-**Encryption:**
+#### Encryption
 
 - Algorithm: AES-256-GCM (authenticated encryption)
 - Key derivation: PBKDF2-SHA256 with 100,000 iterations
 - Random nonce per secret (12 bytes)
 - Authentication tag prevents tampering
 
-**Key Derivation:**
+#### Key Derivation
 
 ```go
 Key = PBKDF2-SHA256(
@@ -140,7 +140,7 @@ Key = PBKDF2-SHA256(
 )
 ```
 
-**File Format:**
+#### File Format
 
 ```text
 [version:1][nonce:12][expiry:8][ciphertext+tag:N]
@@ -150,14 +150,14 @@ Key = PBKDF2-SHA256(
 └─────────────────────────────── File format version (1)
 ```
 
-**File Paths:**
+#### File Paths
 
 - Location: `/tmp/burnafter-{binary_hash[:16]}-{secret_hash[:16]}`
 - Deterministic: Same binary + secret name = same file path
 - Permissions: 0600 (owner read/write only)
 - No file extension (opaque)
 
-**TTL Enforcement:**
+#### TTL Enforcement
 
 - Expiry timestamp embedded in encrypted file
 - Checked on every `Get()` operation
@@ -248,12 +248,10 @@ Key = PBKDF2-SHA256(
 
 ### What burnafter DOES NOT protect against
 
-❌ Root/admin access (can read any memory/file)
-❌ Memory dumps of running processes
+❌ Root/admin access (attaching to process)
 ❌ Physical access to system (cold boot attacks)
 ❌ Malicious code in same process
 ❌ Side-channel attacks (timing, power analysis)
-❌ Compromised binary (attacker can extract nonce)
 
 ## Best Practices
 

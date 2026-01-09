@@ -26,7 +26,7 @@ and want to ensure only a specific application binary can access it.
 - **Automatic Cleanup**: Server shuts down after inactivity period or secret expiration
 - **No Persistency**: Client binary updates invalidate access (by design)
 
-<!-- markdownlint-disable MD001 MD010 -->
+<!-- markdownlint-disable MD010 -->
 
 ## Security Model
 
