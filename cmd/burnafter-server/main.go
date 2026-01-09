@@ -8,13 +8,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/carabiner-dev/burnafter/internal/server"
 	"github.com/carabiner-dev/burnafter/options"
+	"github.com/chainguard-dev/clog"
 )
 
 func main() {
@@ -31,25 +33,36 @@ func main() {
 		serverOpts.Common = clientOpts
 	}
 
-	// Configure logging based on debug setting
-	if serverOpts.Debug {
-		log.SetOutput(os.Stderr)
-	} else {
-		log.SetOutput(os.NewFile(0, os.DevNull))
+	log := clog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	// Totally mute the log unless debugging
+	if !serverOpts.Debug {
+		log = clog.New(&noopHandler{})
 	}
 
-	srv, err := server.NewServer(serverOpts)
+	// Initialize the context with the loaded logger
+	ctx := clog.WithLogger(context.Background(), log)
+
+	// Create the new server
+	srv, err := server.NewServer(ctx, serverOpts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create server: %v\n", err)
 		os.Exit(1)
 	}
 
-	if serverOpts.Debug {
-		log.Println("Starting burnafter server...")
-	}
+	clog.FromContext(ctx).Info("Starting burnafter server...")
 
-	if err := srv.Run(); err != nil {
+	if err := srv.Run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
 		os.Exit(1)
 	}
 }
+
+type noopHandler struct{}
+
+func (h *noopHandler) Enabled(_ context.Context, level slog.Level) bool   { return false }
+func (h *noopHandler) Handle(_ context.Context, record slog.Record) error { return nil }
+func (h *noopHandler) WithAttrs(attrs []slog.Attr) slog.Handler           { return h }
+func (h *noopHandler) WithGroup(name string) slog.Handler                 { return h }

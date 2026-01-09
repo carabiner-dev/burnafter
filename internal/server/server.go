@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	isecrets "github.com/carabiner-dev/burnafter/internal/secrets"
 	"github.com/carabiner-dev/burnafter/options"
 	"github.com/carabiner-dev/burnafter/secrets"
+	"github.com/chainguard-dev/clog"
 )
 
 // Server implements the BurnAfter gRPC service
@@ -47,7 +49,7 @@ type Server struct {
 }
 
 // NewServer creates a new BurnAfter server with the supplied options
-func NewServer(opts *options.Server) (*Server, error) {
+func NewServer(ctx context.Context, opts *options.Server) (*Server, error) {
 	// Generat the random session ID
 	sessionID, err := common.GenerateSessionID()
 	if err != nil {
@@ -60,16 +62,14 @@ func NewServer(opts *options.Server) (*Server, error) {
 	// In Linux, try to use the kernel keyring driver to store the encrypted secrets.
 	keyringStorage, err := isecrets.NewKeyringStorage()
 	if err == nil {
-		if opts.Debug {
-			log.Printf("Using kernel keyring storage for secrets")
-		}
+		clog.FromContext(ctx).Debug("Using kernel keyring storage for secrets")
 		storage = keyringStorage
 	}
 
 	// .. but fall back to memory storage if not available
 	if storage == nil {
-		if opts.Debug {
-			log.Printf("Kernel keyring not available, using memory storage: %v", err)
+		if runtime.GOOS == "linux" {
+			clog.FromContext(ctx).Debugf("Kernel keyring not available, using memory storage: %v", err)
 		}
 		storage = isecrets.NewMemoryStorage()
 	}
@@ -88,7 +88,7 @@ func NewServer(opts *options.Server) (*Server, error) {
 }
 
 // Run starts the server and blocks until shutdown
-func (s *Server) Run() error {
+func (s *Server) Run(ctx context.Context) error {
 	// Remove existing socket file if it already exists
 	if err := os.RemoveAll(s.options.SocketPath); err != nil {
 		return fmt.Errorf("failed to remove existing socket: %w", err)
@@ -107,10 +107,8 @@ func (s *Server) Run() error {
 		return fmt.Errorf("failed to set socket permissions: %w", err)
 	}
 
-	if s.options.Debug {
-		log.Printf("Server listening on %s", s.options.SocketPath)
-		log.Printf("Session ID: %s", s.sessionID)
-	}
+	clog.FromContext(ctx).Debugf("Server listening on %s", s.options.SocketPath)
+	clog.FromContext(ctx).Debugf("Session ID: %s", s.sessionID)
 
 	// Create gRPC server with custom credentials to extract peer info
 	s.grpcServer = grpc.NewServer(
@@ -124,15 +122,12 @@ func (s *Server) Run() error {
 	// Start inactivity monitor
 	if s.options.InactivityTimeout > 0 {
 		s.inactivityTimer = time.AfterFunc(s.options.InactivityTimeout, func() {
-			if s.options.Debug {
-				log.Printf("Inactivity timeout reached, shutting down")
-			}
+			clog.FromContext(ctx).Info("Inactivity timeout reached, shutting down")
 			s.grpcServer.GracefulStop()
 			close(s.shutdownChan)
 		})
 	}
 
-	// Serve
 	if err := s.grpcServer.Serve(listener); err != nil {
 		return fmt.Errorf("failed to serve: %w", err)
 	}
