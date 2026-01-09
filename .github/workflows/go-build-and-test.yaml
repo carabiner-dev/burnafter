@@ -48,13 +48,13 @@ jobs:
         cache: false
 
     - name: Build server binaries
-      run: make build-servers
+      run: make servers
 
     - name: Check for uncommitted changes
       run: |
         if ! git diff --exit-code --quiet internal/embedded/servers/; then
           echo "Error: Embedded server binaries are out of date!"
-          echo "Please run 'make build-servers' and commit the changes."
+          echo "Please run 'make servers' and commit the changes."
           echo ""
           echo "Changed files:"
           git diff --exit-code --name-only internal/embedded/servers

@@ -1,4 +1,4 @@
-.PHONY: all build build-servers proto clean install test help
+.PHONY: all build servers proto clean install test help
 
 # Binary names
 BINARY=burnafter
@@ -18,12 +18,12 @@ GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
 
-all: proto build-servers build
+all: proto servers build
 
 build: ## Build the client binary
 	$(GOBUILD) -o $(BUILD_DIR)/$(BINARY) ./cmd/burnafter
 
-build-servers: ## Build server binaries for all platforms (compressed)
+servers: ## Build server binaries for all platforms (compressed)
 	./hack/build-server-all-platforms.sh
 
 proto: ## Generate protobuf code
