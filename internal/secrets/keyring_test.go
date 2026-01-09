@@ -151,3 +151,54 @@ func TestKeyringStorageGetNonExistent(t *testing.T) {
 		t.Error("Expected error when getting non-existent key, got nil")
 	}
 }
+
+func TestKeyringStoragePersistsAcrossInstances(t *testing.T) {
+	// This test simulates what happens in production:
+	// - Store is called with one storage instance
+	// - Get is called with a different storage instance
+	//
+	// This would have caught the int() casting bug
+	// I fixed in b806c968ace15191bdb38569e94a8a62cf6bb546
+
+	ctx := context.Background()
+
+	// Create first storage instance and store a secret
+	storage1, err := NewKeyringStorage()
+	if err != nil {
+		t.Skipf("Skipping keyring test: %v", err)
+	}
+
+	payload := &secrets.Payload{
+		EncryptedData:    []byte("test-data-persistence"),
+		Salt:             []byte("test-salt-persistence"),
+		ClientBinaryHash: "test-hash-persistence",
+	}
+
+	err = storage1.Store(ctx, "test-persistence", payload)
+	if err != nil {
+		t.Fatalf("Failed to store secret: %v", err)
+	}
+
+	// Create a NEW storage instance (simulating server still running but new request)
+	storage2, err := NewKeyringStorage()
+	if err != nil {
+		t.Skipf("Skipping keyring test: %v", err)
+	}
+
+	// Try to retrieve with the new instance
+	retrieved, err := storage2.Get(ctx, "test-persistence")
+	if err != nil {
+		t.Fatalf("Failed to get secret from new storage instance: %v", err)
+	}
+
+	// Verify the data matches
+	if !bytes.Equal(retrieved.EncryptedData, payload.EncryptedData) {
+		t.Errorf("EncryptedData mismatch: got %s, want %s", retrieved.EncryptedData, payload.EncryptedData)
+	}
+
+	// Clean up
+	err = storage2.Delete(ctx, "test-persistence")
+	if err != nil {
+		t.Fatalf("Failed to delete secret: %v", err)
+	}
+}
