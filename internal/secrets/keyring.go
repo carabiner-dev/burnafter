@@ -24,8 +24,16 @@ var _ secrets.Storage = &KeyringStorage{}
 type KeyringStorage struct{}
 
 // NewKeyringStorage creates a new kernel keyring storage backend.
-// It uses the process keyring (KEY_SPEC_PROCESS_KEYRING) which is isolated per-process.
+// It uses the process keyring (KEY_SPEC_PROCESS_KEYRING) which is
+// isolated per-process.
 func NewKeyringStorage() (*KeyringStorage, error) {
+	// Request the process keyring, creating it if it doesn't exist
+	// The second parameter (true) tells the kernel to create it if needed
+	_, err := unix.KeyctlGetKeyringID(unix.KEY_SPEC_PROCESS_KEYRING, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to access/create process keyring: %w", err)
+	}
+
 	return &KeyringStorage{}, nil
 }
 
@@ -40,13 +48,13 @@ func (k *KeyringStorage) Store(ctx context.Context, id string, secret *secrets.P
 
 	// Check if key already exists and delete it first
 	// This ensures we're always creating a fresh key
-	if existingKeyID, err := unix.KeyctlSearch(int(unix.KEY_SPEC_PROCESS_KEYRING), "user", id, 0); err == nil {
+	if existingKeyID, err := unix.KeyctlSearch(unix.KEY_SPEC_PROCESS_KEYRING, "user", id, 0); err == nil {
 		//nolint:errcheck // Don't err if key can't be removed it will be overwritten anyway.
-		_, _ = unix.KeyctlInt(unix.KEYCTL_UNLINK, existingKeyID, int(unix.KEY_SPEC_PROCESS_KEYRING), 0, 0)
+		_, _ = unix.KeyctlInt(unix.KEYCTL_UNLINK, existingKeyID, unix.KEY_SPEC_PROCESS_KEYRING, 0, 0)
 	}
 
 	// Add the key to the process keyring
-	keyID, err := unix.AddKey("user", id, buf.Bytes(), int(unix.KEY_SPEC_PROCESS_KEYRING))
+	keyID, err := unix.AddKey("user", id, buf.Bytes(), unix.KEY_SPEC_PROCESS_KEYRING)
 	if err != nil {
 		return fmt.Errorf("adding key to keyring: %w", err)
 	}
@@ -63,7 +71,7 @@ func (k *KeyringStorage) Store(ctx context.Context, id string, secret *secrets.P
 // Get retrieves a secret from the kernel keyring by its ID.
 func (k *KeyringStorage) Get(ctx context.Context, id string) (*secrets.Payload, error) {
 	// Search for the key by description
-	keyID, err := unix.KeyctlSearch(int(unix.KEY_SPEC_PROCESS_KEYRING), "user", id, 0)
+	keyID, err := unix.KeyctlSearch(unix.KEY_SPEC_PROCESS_KEYRING, "user", id, 0)
 	if err != nil {
 		return nil, fmt.Errorf("looking up secret: %w", err)
 	}
@@ -94,14 +102,14 @@ func (k *KeyringStorage) Get(ctx context.Context, id string) (*secrets.Payload, 
 // Delete removes a secret from the kernel keyring by its ID.
 func (k *KeyringStorage) Delete(ctx context.Context, id string) error {
 	// Search for the key by its ID
-	keyID, err := unix.KeyctlSearch(int(unix.KEY_SPEC_PROCESS_KEYRING), "user", id, 0)
+	keyID, err := unix.KeyctlSearch(unix.KEY_SPEC_PROCESS_KEYRING, "user", id, 0)
 	if err != nil {
 		//nolint:nilerr // Key not found is not an error
 		return nil
 	}
 
 	// Unlink the key from the keyring
-	_, err = unix.KeyctlInt(unix.KEYCTL_UNLINK, keyID, int(unix.KEY_SPEC_PROCESS_KEYRING), 0, 0)
+	_, err = unix.KeyctlInt(unix.KEYCTL_UNLINK, keyID, unix.KEY_SPEC_PROCESS_KEYRING, 0, 0)
 	if err != nil {
 		return fmt.Errorf("unlinking key from keyring: %w", err)
 	}
