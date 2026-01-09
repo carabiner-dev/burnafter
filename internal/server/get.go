@@ -6,10 +6,10 @@ package server
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/carabiner-dev/burnafter/internal/common"
+	"github.com/chainguard-dev/clog"
 )
 
 // Get implements the Get RPC by handling the full get lifecycle:
@@ -18,9 +18,7 @@ import (
 func (s *Server) Get(ctx context.Context, req *common.GetRequest) (*common.GetResponse, error) {
 	s.updateActivity()
 
-	if s.options.Debug {
-		log.Printf("Get request for secret: %s", req.Name)
-	}
+	clog.FromContext(ctx).Debugf("Get request for secret: %s", req.Name)
 
 	// Get client PID and verify binary
 	authInfo, err := GetPeerAuthInfo(ctx)
@@ -116,9 +114,7 @@ func (s *Server) Get(ctx context.Context, req *common.GetRequest) (*common.GetRe
 		}, nil
 	}
 
-	if s.options.Debug {
-		log.Printf("Retrieved secret '%s'", req.Name)
-	}
+	clog.FromContext(ctx).Debugf("Retrieved secret '%s'", req.Name)
 
 	return &common.GetResponse{
 		Success: true,

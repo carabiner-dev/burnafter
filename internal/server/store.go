@@ -6,11 +6,11 @@ package server
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/carabiner-dev/burnafter/internal/common"
 	"github.com/carabiner-dev/burnafter/secrets"
+	"github.com/chainguard-dev/clog"
 )
 
 // Store implements the Store RPC. Takes a storage request to save aaa secret
@@ -20,9 +20,7 @@ import (
 func (s *Server) Store(ctx context.Context, req *common.StoreRequest) (*common.StoreResponse, error) {
 	s.updateActivity()
 
-	if s.options.Debug {
-		log.Printf("Store request for secret: %s", req.Name)
-	}
+	clog.FromContext(ctx).Debugf("Store request for secret: %s", req.Name)
 
 	// Get client PID and verify binary
 	authInfo, err := GetPeerAuthInfo(ctx)
@@ -44,9 +42,7 @@ func (s *Server) Store(ctx context.Context, req *common.StoreRequest) (*common.S
 	}
 
 	// Debug the hash value
-	if s.options.Debug {
-		log.Printf("Client binary hash: %s", clientHash)
-	}
+	clog.FromContext(ctx).Debugf("Client binary hash: %s", clientHash)
 
 	// Check secret size limit
 	secretSize := int64(len(req.Secret))
@@ -139,14 +135,12 @@ func (s *Server) Store(ctx context.Context, req *common.StoreRequest) (*common.S
 	}
 	s.secretsMu.Unlock()
 
-	if s.options.Debug {
-		if absoluteExpiresAt != nil {
-			log.Printf("Stored secret '%s', inactivity TTL: %v, absolute expiration: %s",
-				req.Name, ttl, absoluteExpiresAt.Format(time.RFC3339))
-		} else {
-			log.Printf("Stored secret '%s', inactivity TTL: %v (no absolute expiration)",
-				req.Name, ttl)
-		}
+	if absoluteExpiresAt != nil {
+		clog.FromContext(ctx).Debugf("Stored secret '%s', inactivity TTL: %v, absolute expiration: %s",
+			req.Name, ttl, absoluteExpiresAt.Format(time.RFC3339))
+	} else {
+		clog.FromContext(ctx).Debugf("Stored secret '%s', inactivity TTL: %v (no absolute expiration)",
+			req.Name, ttl)
 	}
 
 	return &common.StoreResponse{Success: true}, nil

@@ -6,7 +6,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"runtime"
@@ -46,6 +45,9 @@ type Server struct {
 	inactivityTimer *time.Timer
 	shutdownChan    chan struct{}
 	grpcServer      *grpc.Server
+
+	// ctx holds the server's root context with logger
+	ctx context.Context
 }
 
 // NewServer creates a new BurnAfter server with the supplied options
@@ -82,9 +84,17 @@ func NewServer(ctx context.Context, opts *options.Server) (*Server, error) {
 		lastActivity: time.Now(),
 		options:      opts,
 		shutdownChan: make(chan struct{}),
+		ctx:          ctx,
 	}
 
 	return s, nil
+}
+
+// loggerInterceptor ius a grpx unary interceptor that injects the server's
+// logger into each request context
+func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	// Inject the logger from the server's context into the request context
+	return handler(clog.WithLogger(ctx, clog.FromContext(s.ctx)), req)
 }
 
 // Run starts the server and blocks until shutdown
@@ -110,9 +120,10 @@ func (s *Server) Run(ctx context.Context) error {
 	clog.FromContext(ctx).Debugf("Server listening on %s", s.options.SocketPath)
 	clog.FromContext(ctx).Debugf("Session ID: %s", s.sessionID)
 
-	// Create gRPC server with custom credentials to extract peer info
+	// Create gRPC server with custom credentials to extract peer info and logger interceptor
 	s.grpcServer = grpc.NewServer(
 		grpc.Creds(NewPeerCredentials()),
+		grpc.UnaryInterceptor(s.loggerInterceptor),
 	)
 	common.RegisterBurnAfterServer(s.grpcServer, s)
 
@@ -185,12 +196,10 @@ func (s *Server) cleanupExpiredSecrets() {
 
 				// Remove the secret if it's expired.
 				if expired {
-					if s.options.Debug {
-						log.Printf("Removing expired secret '%s' (reason: %s)", name, reason)
-					}
+					clog.FromContext(s.ctx).Debugf("Removing expired secret '%s' (reason: %s)", name, reason)
 					delete(s.secrets, name)
 					// Also delete from the storage backend
-					_ = s.storage.Delete(context.Background(), name) //nolint:errcheck
+					_ = s.storage.Delete(s.ctx, name) //nolint:errcheck
 				}
 			}
 
@@ -200,9 +209,7 @@ func (s *Server) cleanupExpiredSecrets() {
 
 			// If no secrets remain, shutdown the server
 			if secretCount == 0 && s.grpcServer != nil {
-				if s.options.Debug {
-					log.Printf("No secrets remaining, shutting down server")
-				}
+				clog.FromContext(s.ctx).Debug("No secrets remaining, shutting down server")
 				s.grpcServer.GracefulStop()
 				close(s.shutdownChan)
 				return
