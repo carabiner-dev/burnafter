@@ -24,9 +24,13 @@ type Server struct {
 
 // Client options set
 type Client struct {
-	Nonce    string
-	NoServer bool // Skip server startup and use encrypted file fallback
 	Common
+	// Cliente nonce to complete key derivation
+	Nonce string
+	// Skip server startup and use encrypted file fallback
+	NoServer bool
+	// Prevent the client from using fallback mode
+	NoFallbackMode bool
 }
 
 // defaultCommon default common options shared by default server and client sets

@@ -6,6 +6,7 @@ package burnafter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -21,6 +22,8 @@ import (
 	"github.com/carabiner-dev/burnafter/internal/server"
 	"github.com/carabiner-dev/burnafter/options"
 )
+
+var ErrServerStartFailed = errors.New("server failed to start (and fallback mode is disabled)")
 
 // Client is the burnafter client.
 //
@@ -61,6 +64,7 @@ func generateSocketPath() string {
 // Connect establishes the connection to the server.
 // If the server is not running, this function spawns the
 // forked process to start listening.
+//
 // If NoServer option is set or server startup fails, fallback mode is used.
 func (c *Client) Connect(ctx context.Context) error {
 	// If NoServer option is set, skip server connection
@@ -70,6 +74,9 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	// If server startup already failed, skip trying again
 	if c.serverStartFailed {
+		if c.options.NoFallbackMode {
+			return ErrServerStartFailed
+		}
 		return nil
 	}
 
@@ -97,6 +104,9 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	// Server failed to start, mark as failed and use fallback
 	c.serverStartFailed = true
+	if c.options.NoFallbackMode {
+		return ErrServerStartFailed
+	}
 	return nil
 }
 
