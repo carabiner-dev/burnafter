@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/chainguard-dev/clog"
+
 	"github.com/carabiner-dev/burnafter/internal/common"
 	"github.com/carabiner-dev/burnafter/secrets"
-	"github.com/chainguard-dev/clog"
 )
 
 // Store implements the Store RPC. Takes a storage request to save aaa secret

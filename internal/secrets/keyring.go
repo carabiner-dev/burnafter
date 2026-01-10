@@ -14,10 +14,10 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/chainguard-dev/clog"
 	"golang.org/x/sys/unix"
 
 	"github.com/carabiner-dev/burnafter/secrets"
-	"github.com/chainguard-dev/clog"
 )
 
 // Ensure the driver implements the storage interface
@@ -41,7 +41,7 @@ type keyringResponse struct {
 var (
 	workerOnce    sync.Once
 	workerReqChan chan keyringRequest
-	workerInitErr error
+	errWorkerInit error
 	workerKeyring int
 )
 
@@ -51,7 +51,7 @@ var (
 // This driver uses the KEY_SPEC_PROCESS_KEYRING key ring, meaning no other
 // program, even from the same user, can read the encrypted secrets.
 //
-// Unfortuantely. After much testing, the process-scoped keyring seems impossible
+// Unfortunately. After much testing, the process-scoped keyring seems impossible
 // to access from child threads when the GRPC server is processing requests. To
 // get around this, all operations are dispatched to a shared worker goroutine
 // locked to a OS thread. Multiple instances share the same worker to ensure
@@ -104,8 +104,8 @@ func initWorker(ctx context.Context) {
 	}()
 
 	// Wait for initialization to complete
-	workerInitErr = <-initDone
-	if workerInitErr != nil {
+	errWorkerInit = <-initDone
+	if errWorkerInit != nil {
 		close(workerReqChan)
 	}
 }
@@ -124,8 +124,8 @@ func NewKeyringStorage(ctx context.Context) (*KeyringStorage, error) {
 	})
 
 	// Return error if worker failed to initialize
-	if workerInitErr != nil {
-		return nil, workerInitErr
+	if errWorkerInit != nil {
+		return nil, errWorkerInit
 	}
 
 	return &KeyringStorage{}, nil

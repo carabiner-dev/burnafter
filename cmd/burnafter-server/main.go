@@ -14,9 +14,10 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/chainguard-dev/clog"
+
 	"github.com/carabiner-dev/burnafter/internal/server"
 	"github.com/carabiner-dev/burnafter/options"
-	"github.com/chainguard-dev/clog"
 )
 
 func main() {
@@ -63,6 +64,6 @@ func main() {
 type noopHandler struct{}
 
 func (h *noopHandler) Enabled(_ context.Context, level slog.Level) bool   { return false }
-func (h *noopHandler) Handle(_ context.Context, record slog.Record) error { return nil }
+func (h *noopHandler) Handle(_ context.Context, record slog.Record) error { return nil } //nolint:gocritic
 func (h *noopHandler) WithAttrs(attrs []slog.Attr) slog.Handler           { return h }
 func (h *noopHandler) WithGroup(name string) slog.Handler                 { return h }

@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/carabiner-dev/burnafter/internal/common"
 	"github.com/chainguard-dev/clog"
+
+	"github.com/carabiner-dev/burnafter/internal/common"
 )
 
 // Get implements the Get RPC by handling the full get lifecycle:

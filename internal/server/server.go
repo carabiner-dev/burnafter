@@ -12,13 +12,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chainguard-dev/clog"
 	"google.golang.org/grpc"
 
 	"github.com/carabiner-dev/burnafter/internal/common"
 	isecrets "github.com/carabiner-dev/burnafter/internal/secrets"
 	"github.com/carabiner-dev/burnafter/options"
 	"github.com/carabiner-dev/burnafter/secrets"
-	"github.com/chainguard-dev/clog"
 )
 
 // Server implements the BurnAfter gRPC service
@@ -47,7 +47,7 @@ type Server struct {
 	grpcServer      *grpc.Server
 
 	// ctx holds the server's root context with logger
-	ctx context.Context
+	ctx context.Context //nolint:containedctx
 }
 
 // NewServer creates a new BurnAfter server with the supplied options
@@ -94,6 +94,7 @@ func NewServer(ctx context.Context, opts *options.Server) (*Server, error) {
 // logger into each request context
 func (s *Server) loggerInterceptor(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	// Inject the logger from the server's context into the request context
+	//nolint:contextcheck // clog.WithLogger properly inherits from parent context
 	return handler(clog.WithLogger(ctx, clog.FromContext(s.ctx)), req)
 }
 
@@ -106,7 +107,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	// Create Unix domain socket listener
 	lc := net.ListenConfig{}
-	listener, err := lc.Listen(context.Background(), "unix", s.options.SocketPath)
+	listener, err := lc.Listen(ctx, "unix", s.options.SocketPath)
 	if err != nil {
 		return fmt.Errorf("failed to listen on socket: %w", err)
 	}
