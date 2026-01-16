@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -125,6 +126,10 @@ func (c *Client) encryptSecret(secretName string, secret []byte, expiryTime time
 	buf := make([]byte, 1+gcmNonceSize+8+len(ciphertext))
 	buf[0] = file.version
 	copy(buf[1:], file.nonce)
+	// Ensure expiry is non-negative before conversion
+	if file.expiry < 0 {
+		return fmt.Errorf("invalid expiry time: %d", file.expiry)
+	}
 	binary.BigEndian.PutUint64(buf[1+gcmNonceSize:], uint64(file.expiry))
 	copy(buf[1+gcmNonceSize+8:], file.ciphertext)
 
@@ -189,7 +194,11 @@ func (c *Client) decryptSecret(secretName string) ([]byte, error) {
 	}
 
 	nonce := data[1 : 1+gcmNonceSize]
-	expiry := int64(binary.BigEndian.Uint64(data[1+gcmNonceSize : 1+gcmNonceSize+8]))
+	expiryUint := binary.BigEndian.Uint64(data[1+gcmNonceSize : 1+gcmNonceSize+8])
+	if expiryUint > math.MaxInt64 {
+		return nil, fmt.Errorf("invalid expiry time in file")
+	}
+	expiry := int64(expiryUint)
 	ciphertext := data[1+gcmNonceSize+8:]
 
 	// Check if expired
@@ -281,7 +290,11 @@ func (c *Client) cleanupExpiredFallbackFiles() error {
 			continue
 		}
 
-		expiry := int64(binary.BigEndian.Uint64(data[1+gcmNonceSize : 1+gcmNonceSize+8]))
+		expiryUint := binary.BigEndian.Uint64(data[1+gcmNonceSize : 1+gcmNonceSize+8])
+		if expiryUint > math.MaxInt64 {
+			continue // Skip invalid files
+		}
+		expiry := int64(expiryUint)
 
 		// Delete if expired
 		if now > expiry {
