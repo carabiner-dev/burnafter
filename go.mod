@@ -5,7 +5,7 @@ go 1.24.11
 require (
 	github.com/chainguard-dev/clog v1.8.0
 	golang.org/x/crypto v0.47.0
-	golang.org/x/sys v0.40.0
+	golang.org/x/sys v0.41.0
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 )
