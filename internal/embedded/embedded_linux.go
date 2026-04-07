@@ -52,6 +52,9 @@ func CreateMemfdServer(ctx context.Context) (int, error) {
 	// This is optional - if it fails (e.g., due to SELinux), we continue anyway
 	// as the sealing is a security enhancement but not required for functionality
 	seals := unix.F_SEAL_SEAL | unix.F_SEAL_SHRINK | unix.F_SEAL_GROW | unix.F_SEAL_WRITE
+	if fd < 0 {
+		return -1, fmt.Errorf("invalid memfd file descriptor: %d", fd)
+	}
 	if _, err := unix.FcntlInt(uintptr(fd), unix.F_ADD_SEALS, seals); err != nil {
 		// Sealing failed, but we can continue - it's optional
 		// In production code, you might want to log this

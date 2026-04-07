@@ -8,6 +8,7 @@ package server
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"syscall"
 )
@@ -28,6 +29,10 @@ func GetPeerCredentials(conn *net.UnixConn) (pid int32, uid, gid uint32, err err
 	// Use the raw connection to call getsockopt, this returns the Ucred
 	// struct from the socket.
 	err = rawConn.Control(func(fd uintptr) {
+		if fd > uintptr(math.MaxInt) {
+			credErr = fmt.Errorf("file descriptor %d overflows int", fd)
+			return
+		}
 		ucred, credErr = syscall.GetsockoptUcred(int(fd), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
 	})
 	if err != nil {

@@ -158,6 +158,9 @@ func (c *Client) startServer(ctx context.Context) error {
 	memfd, err := embedded.CreateMemfdServer(ctx)
 	if err == nil {
 		// Convert the raw fd to an *os.File so we can pass it via ExtraFiles
+		if memfd < 0 {
+			return fmt.Errorf("invalid memfd file descriptor: %d", memfd)
+		}
 		memFile = os.NewFile(uintptr(memfd), "burnafter-server")
 		if memFile != nil {
 			defer memFile.Close() //nolint:errcheck
