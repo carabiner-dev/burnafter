@@ -7,13 +7,20 @@ on:
   pull_request:
     branches:
       - "main"
+  workflow_call: {}
   workflow_dispatch: {}
+
+permissions: {} 
 
 jobs:
   resolve-versions:
+    permissions:
+      contents: read
+
     runs-on: ubuntu-latest
     outputs:
       go-versions: ${{ steps.matrix.outputs.go-versions }}
+      
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
@@ -29,6 +36,9 @@ jobs:
         echo "go-versions=[\"${{ steps.go-versions.outputs.GO_VERSION_STABLE }}\",\"${{ steps.go-versions.outputs.GO_VERSION_PREVIOUS }}\"]" >> "$GITHUB_OUTPUT"
 
   test:
+    permissions:
+      contents: read
+
     needs: resolve-versions
     name: Test (go ${{ matrix.go-version }})
     runs-on: ubuntu-latest
