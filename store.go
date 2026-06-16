@@ -12,6 +12,19 @@ import (
 	"github.com/carabiner-dev/burnafter/options"
 )
 
+// storeExpiry computes a secret's absolute expiry time from the store options,
+// falling back to the client's default TTL.
+func (c *Client) storeExpiry(opts *options.Store) time.Time {
+	switch {
+	case opts.AbsoluteExpirationSeconds > 0:
+		return time.Unix(opts.AbsoluteExpirationSeconds, 0)
+	case opts.TtlSeconds > 0:
+		return time.Now().Add(time.Duration(opts.TtlSeconds) * time.Second)
+	default:
+		return time.Now().Add(c.options.DefaultTTL)
+	}
+}
+
 // Store stores a secret on the server or in fallback encrypted file storage
 func (c *Client) Store(ctx context.Context, name, secret string, funcs ...options.StoreOptsFn) error {
 	opts := &options.Store{}
@@ -21,22 +34,15 @@ func (c *Client) Store(ctx context.Context, name, secret string, funcs ...option
 		}
 	}
 
+	// In-memory mode keeps the (encrypted) secret in this process only.
+	if c.useMemory() {
+		return c.storeInMemory(name, []byte(secret), c.storeExpiry(opts))
+	}
+
 	// Use fallback storage if server is not available
 	if c.useFallback() {
-		// Calculate expiry time
-		var expiryTime time.Time
-		switch {
-		case opts.AbsoluteExpirationSeconds > 0:
-			expiryTime = time.Unix(opts.AbsoluteExpirationSeconds, 0)
-		case opts.TtlSeconds > 0:
-			expiryTime = time.Now().Add(time.Duration(opts.TtlSeconds) * time.Second)
-		default:
-			// Use default TTL
-			expiryTime = time.Now().Add(c.options.DefaultTTL)
-		}
-
 		// Encrypt and store to file
-		if err := c.encryptSecret(name, []byte(secret), expiryTime); err != nil {
+		if err := c.encryptSecret(name, []byte(secret), c.storeExpiry(opts)); err != nil {
 			return fmt.Errorf("failed to store secret in fallback: %w", err)
 		}
 

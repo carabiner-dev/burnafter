@@ -504,8 +504,9 @@ func TestFallbackFilePathFormat(t *testing.T) {
 		t.Fatalf("getFallbackFilePath failed: %v", err)
 	}
 
-	// Verify path is in tmp directory
-	tmpDir := os.TempDir()
+	// Verify path is in tmp directory. os.TempDir may include a trailing
+	// separator (e.g. $TMPDIR on macOS), so normalize before comparing.
+	tmpDir := filepath.Clean(os.TempDir())
 	if filepath.Dir(filePath) != tmpDir {
 		t.Errorf("Expected path in %s, got %s", tmpDir, filePath)
 	}

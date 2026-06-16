@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,6 +35,11 @@ type Client struct {
 	conn              *grpc.ClientConn
 	client            pb.BurnAfterClient
 	serverStartFailed bool // Track if server startup was attempted and failed
+
+	// In-memory store (used when options.InMemory is set): encrypted secrets
+	// held only for the life of the process.
+	memMu    sync.RWMutex
+	memStore map[string]memSecret
 }
 
 // NewClient creates a new client instance
@@ -44,7 +50,8 @@ func NewClient(opts *options.Client) *Client {
 	}
 
 	return &Client{
-		options: opts,
+		options:  opts,
+		memStore: make(map[string]memSecret),
 	}
 }
 
@@ -67,6 +74,11 @@ func generateSocketPath() string {
 //
 // If NoServer option is set or server startup fails, fallback mode is used.
 func (c *Client) Connect(ctx context.Context) error {
+	// In-memory mode keeps secrets in this process only; no server, no files.
+	if c.options.InMemory {
+		return nil
+	}
+
 	// If NoServer option is set, skip server connection
 	if c.options.NoServer {
 		return nil

@@ -31,6 +31,12 @@ type Client struct {
 	NoServer bool
 	// Prevent the client from using fallback mode
 	NoFallbackMode bool
+	// InMemory keeps secrets encrypted in this process's memory only: no server
+	// is started and nothing is written to disk, so secrets do not persist
+	// across restarts. Intended for long-lived daemons that need an ephemeral
+	// secure cache (e.g. a server caching short-lived tokens). Takes precedence
+	// over the server and file-fallback paths.
+	InMemory bool
 }
 
 // defaultCommon default common options shared by default server and client sets

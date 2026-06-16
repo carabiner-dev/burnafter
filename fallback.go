@@ -79,34 +79,62 @@ func (c *Client) getFallbackFilePath(secretName string) (string, error) {
 	return filePath, nil
 }
 
+// newGCM builds an AES-256-GCM AEAD from a derived key.
+func newGCM(key []byte) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cipher: %w", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %w", err)
+	}
+	return gcm, nil
+}
+
+// seal encrypts secret for secretName, returning a fresh GCM nonce and the
+// ciphertext (with authentication tag). Shared by the file and in-memory stores.
+func (c *Client) seal(secretName string, secret []byte) (nonce, ciphertext []byte, err error) {
+	key, err := c.deriveKey(secretName)
+	if err != nil {
+		return nil, nil, err
+	}
+	gcm, err := newGCM(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	nonce = make([]byte, gcmNonceSize)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, nil, fmt.Errorf("failed to generate nonce: %w", err)
+	}
+	return nonce, gcm.Seal(nil, nonce, secret, nil), nil
+}
+
+// open decrypts ciphertext for secretName using nonce. Shared by the file and
+// in-memory stores.
+func (c *Client) open(secretName string, nonce, ciphertext []byte) ([]byte, error) {
+	key, err := c.deriveKey(secretName)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := newGCM(key)
+	if err != nil {
+		return nil, err
+	}
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt: %w", err)
+	}
+	return plaintext, nil
+}
+
 // encryptSecret encrypts a secret and writes it to a file
 func (c *Client) encryptSecret(secretName string, secret []byte, expiryTime time.Time) error {
-	// Derive encryption key
-	key, err := c.deriveKey(secretName)
+	// Encrypt the secret
+	nonce, ciphertext, err := c.seal(secretName, secret)
 	if err != nil {
 		return err
 	}
-
-	// Create AES cipher
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return fmt.Errorf("failed to create cipher: %w", err)
-	}
-
-	// Create GCM mode
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return fmt.Errorf("failed to create GCM: %w", err)
-	}
-
-	// Generate random nonce
-	nonce := make([]byte, gcmNonceSize)
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return fmt.Errorf("failed to generate nonce: %w", err)
-	}
-
-	// Encrypt the secret
-	ciphertext := gcm.Seal(nil, nonce, secret, nil)
 
 	// Get file path
 	filePath, err := c.getFallbackFilePath(secretName)
@@ -208,31 +236,8 @@ func (c *Client) decryptSecret(secretName string) ([]byte, error) {
 		return nil, fmt.Errorf("secret expired")
 	}
 
-	// Derive encryption key
-	key, err := c.deriveKey(secretName)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create AES cipher
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cipher: %w", err)
-	}
-
-	// Create GCM mode
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GCM: %w", err)
-	}
-
 	// Decrypt
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt: %w", err)
-	}
-
-	return plaintext, nil
+	return c.open(secretName, nonce, ciphertext)
 }
 
 // deleteFallbackSecret removes a secret file
