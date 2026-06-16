@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/carabiner-dev/burnafter"
+	"github.com/carabiner-dev/burnafter/embedded"
 	"github.com/carabiner-dev/burnafter/options"
 )
 
@@ -127,7 +128,7 @@ func runStore(ctx context.Context, opts *options.Client, args []string) error {
 		}
 	}
 
-	c := burnafter.NewClient(opts)
+	c := burnafter.NewClient(opts, burnafter.WithServerLauncher(embedded.Launch))
 	if err := c.Connect(ctx); err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
@@ -153,7 +154,7 @@ func runGet(ctx context.Context, opts *options.Client, args []string) error {
 
 	name := args[0]
 
-	c := burnafter.NewClient(opts)
+	c := burnafter.NewClient(opts, burnafter.WithServerLauncher(embedded.Launch))
 	if err := c.Connect(ctx); err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
@@ -171,7 +172,7 @@ func runGet(ctx context.Context, opts *options.Client, args []string) error {
 
 func runPing(ctx context.Context, opts *options.Client) error {
 	// Create the new client, but don't connect
-	c := burnafter.NewClient(opts)
+	c := burnafter.NewClient(opts, burnafter.WithServerLauncher(embedded.Launch))
 
 	// If the server is not running, stop here to avoid
 	// starting the daemon when just checking.

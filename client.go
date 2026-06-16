@@ -5,26 +5,38 @@ package burnafter
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
-	"os"
-	"os/exec"
-	"syscall"
 	"time"
 
 	"github.com/chainguard-dev/clog"
 	"google.golang.org/grpc"
 
 	pb "github.com/carabiner-dev/burnafter/internal/common"
-	"github.com/carabiner-dev/burnafter/internal/embedded"
 	isecrets "github.com/carabiner-dev/burnafter/internal/secrets"
 	"github.com/carabiner-dev/burnafter/internal/server"
 	"github.com/carabiner-dev/burnafter/options"
 )
 
 var ErrServerStartFailed = errors.New("server failed to start (and fallback mode is disabled)")
+
+// ServerLauncher starts the burnafter server as a detached subprocess
+// configured with the given options. The embedded-server implementation lives in
+// the github.com/carabiner-dev/burnafter/embedded package (embedded.Launch);
+// keeping it out of the core lets programs that only use the in-memory or
+// encrypted-file modes avoid linking the multi-megabyte embedded server binary.
+type ServerLauncher func(ctx context.Context, opts *options.Client) error
+
+// Option configures a Client.
+type Option func(*Client)
+
+// WithServerLauncher enables embedded-server mode by supplying the launcher
+// (typically embedded.Launch). Without it, a client falls back to file or
+// in-memory storage instead of spawning a server.
+func WithServerLauncher(l ServerLauncher) Option {
+	return func(c *Client) { c.launcher = l }
+}
 
 // Client is the burnafter client.
 //
@@ -36,25 +48,34 @@ type Client struct {
 	client            pb.BurnAfterClient
 	serverStartFailed bool // Track if server startup was attempted and failed
 
+	// launcher starts the embedded server when set (see WithServerLauncher).
+	// When nil, the client never spawns a server and uses the file/in-memory
+	// fallback instead.
+	launcher ServerLauncher
+
 	// mem is the ephemeral backend used when options.InMemory is set: the OS
 	// secure store (kernel keyring) when available, otherwise an in-process map.
 	// Defaults to the heap store and may be upgraded to the keyring in Connect.
 	mem secretStore
 }
 
-// NewClient creates a new client instance
-func NewClient(opts *options.Client) *Client {
+// NewClient creates a new client instance.
+func NewClient(opts *options.Client, clientOpts ...Option) *Client {
 	// If no socket path is specified, generate one based on the client binary hash
 	if opts.SocketPath == "" {
 		opts.SocketPath = generateSocketPath()
 	}
 
-	return &Client{
+	c := &Client{
 		options: opts,
 		// Default ephemeral backend; Connect upgrades to the keyring when the
 		// platform supports it.
 		mem: newHeapStore(),
 	}
+	for _, o := range clientOpts {
+		o(c)
+	}
+	return c
 }
 
 // generateSocketPath creates a socket path based on the client binary's SHA256 hash
@@ -98,6 +119,18 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	// If server startup already failed, skip trying again
 	if c.serverStartFailed {
+		if c.options.NoFallbackMode {
+			return ErrServerStartFailed
+		}
+		return nil
+	}
+
+	// No launcher wired in: the embedded server isn't available (import the
+	// github.com/carabiner-dev/burnafter/embedded package and pass
+	// WithServerLauncher(embedded.Launch) to enable it). Use the file fallback
+	// unless the caller requires the server.
+	if c.launcher == nil {
+		c.serverStartFailed = true
 		if c.options.NoFallbackMode {
 			return ErrServerStartFailed
 		}
@@ -176,162 +209,10 @@ func (c *Client) dial() error {
 	return nil
 }
 
-// startServer launches the server as a daemon by executing
-// the embedded server binary. It attempts to execute from memory first (memfd_create),
-// falling back to cache directory extraction if memory execution is blocked (e.g., by SELinux).
+// startServer starts the embedded server through the configured launcher.
+// Connect guarantees c.launcher is non-nil before calling this.
 func (c *Client) startServer(ctx context.Context) error {
-	var cmd *exec.Cmd
-	var memFile *os.File
-	var tempServerPath string // Track temp file for cleanup
-
-	// Try memfd approach first (better security, no disk writes)
-	memfd, err := embedded.CreateMemfdServer(ctx)
-	if err == nil {
-		// Convert the raw fd to an *os.File so we can pass it via ExtraFiles
-		if memfd < 0 {
-			return fmt.Errorf("invalid memfd file descriptor: %d", memfd)
-		}
-		memFile = os.NewFile(uintptr(memfd), "burnafter-server")
-		if memFile != nil {
-			defer memFile.Close() //nolint:errcheck
-
-			// Execute the binary via /proc/self/fd/3
-			// ExtraFiles are mapped starting at fd 3 in the child process
-			cmd = exec.CommandContext(ctx, "/proc/self/fd/3")
-			cmd.ExtraFiles = []*os.File{memFile}
-
-			if c.options.Debug {
-				fmt.Fprintf(os.Stderr, "Attempting to start server from memfd...\n")
-			}
-		}
-	}
-
-	// Fallback to writing the binary to temp file if memfd failed, blocked
-	// or is not supported (ie macos)
-	if cmd == nil {
-		if c.options.Debug {
-			fmt.Fprintf(os.Stderr, "memfd unavailable, falling back to temp file...\n")
-		}
-
-		serverPath, err := embedded.ExtractServerBinaryToTemp(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to extract server binary: %w", err)
-		}
-		tempServerPath = serverPath
-
-		cmd = exec.CommandContext(ctx, serverPath) //nolint:gosec // Path is controlled
-	}
-
-	// Marshal the client options to JSON to pass to the server
-	optionsJSON, err := json.Marshal(c.options.Common)
-	if err != nil {
-		return fmt.Errorf("failed to marshal options: %w", err)
-	}
-
-	// Set the JSON options as the first command-line argument
-	cmd.Args = append([]string{cmd.Path, string(optionsJSON)}, cmd.Args[1:]...)
-
-	// Inherit the environment (no need to pass individual vars)
-	cmd.Env = os.Environ()
-
-	// Detach from parent process
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true, // Create new session (detach from terminal)
-	}
-
-	// Set up stdin/stdout/stderr
-	if c.options.Debug {
-		// In debug mode, we inherit stdout/stderr so that
-		// we can see the output con the calling application
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-	} else {
-		// In production, redirect to /dev/null. At some poing this should
-		// implement some way to log.
-		devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
-		if err != nil {
-			return fmt.Errorf("failed to open /dev/null: %w", err)
-		}
-		cmd.Stdin = devNull
-		cmd.Stdout = devNull
-		cmd.Stderr = devNull
-	}
-
-	// Start the server process
-	if err := cmd.Start(); err != nil {
-		// Clean up temp file if it was created
-		if tempServerPath != "" {
-			os.Remove(tempServerPath) //nolint:errcheck,gosec
-		}
-
-		// If memfd execution failed (likely SELinux), try temp file fallback
-		if memFile != nil && os.IsPermission(err) {
-			if c.options.Debug {
-				fmt.Fprintf(os.Stderr, "memfd execution blocked, retrying with temp file...\n")
-			}
-
-			memFile.Close() //nolint:errcheck,gosec // Close the memfd, we're not using it
-
-			// Extract the binary to a temp file
-			serverPath, extractErr := embedded.ExtractServerBinaryToTemp(ctx)
-			if extractErr != nil {
-				return fmt.Errorf("failed to extract server binary: %w", extractErr)
-			}
-			tempServerPath = serverPath
-
-			cmd = exec.CommandContext(ctx, serverPath) //nolint:gosec // Path is controlled
-
-			// Marshal options and pass as first argument
-			cmd.Args = append([]string{cmd.Path, string(optionsJSON)}, cmd.Args[1:]...)
-			cmd.Env = os.Environ()
-
-			cmd.SysProcAttr = &syscall.SysProcAttr{
-				Setsid: true,
-			}
-
-			if c.options.Debug {
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-			} else {
-				devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
-				if err != nil {
-					return fmt.Errorf("failed to open /dev/null: %w", err)
-				}
-				cmd.Stdin = devNull
-				cmd.Stdout = devNull
-				cmd.Stderr = devNull
-			}
-
-			// Retry starting the server with temp binary
-			if err := cmd.Start(); err != nil {
-				// Clean up temp file on failure
-				if tempServerPath != "" {
-					os.Remove(tempServerPath) //nolint:errcheck,gosec
-				}
-				return fmt.Errorf("failed to start server process: %w", err)
-			}
-		} else {
-			return fmt.Errorf("failed to start server process: %w", err)
-		}
-	}
-
-	// Server started successfully - schedule cleanup of temp file if it was created
-	// We delay the cleanup to give the OS time to load the binary into memory
-	if tempServerPath != "" {
-		go func(path string) {
-			// Wait a bit for the OS to finish loading the binary into memory
-			time.Sleep(2 * time.Second)
-			if c.options.Debug {
-				fmt.Fprintf(os.Stderr, "Removing temp server file: %s\n", path)
-			}
-			os.Remove(path) //nolint:errcheck,gosec
-		}(tempServerPath)
-	}
-
-	// Release the process and don't wait for it so it doesn't become a zombie
-	go cmd.Wait() //nolint:errcheck
-
-	return nil
+	return c.launcher(ctx, c.options)
 }
 
 // Ping checks if the server is alive
