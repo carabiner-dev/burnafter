@@ -87,11 +87,17 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	// Server is not running, start it
 	if err := c.startServer(ctx); err != nil {
-		// .. if it fails, then skip it and go to fallback mode
-		clog.FatalContextf(ctx, "error starting server: %v", err)
+		// Starting the embedded server can fail in restricted environments
+		// (e.g. sandboxes that block memfd_create or exec, such as some
+		// containerized runtimes). By default this is not fatal: fall back to
+		// encrypted file storage. Callers that require the server (and want a
+		// hard failure instead of degrading) set NoFallbackMode.
 		c.serverStartFailed = true
-
-		return nil // Don't return error, fallback mode will be used
+		if c.options.NoFallbackMode {
+			return fmt.Errorf("%w: %w", ErrServerStartFailed, err)
+		}
+		clog.WarnContextf(ctx, "could not start burnafter server, using fallback storage: %v", err)
+		return nil
 	}
 
 	// Wait for the server to be ready
