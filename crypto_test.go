@@ -14,7 +14,7 @@ import (
 
 func TestDeriveKey(t *testing.T) {
 	opts := options.DefaultClient
-	opts.Nonce = "test-nonce"
+	opts.Nonce = testNonce
 	opts.NoServer = true
 
 	client := NewClient(opts)
@@ -45,7 +45,7 @@ func TestDeriveKey(t *testing.T) {
 
 func TestDeriveKeyDifferentSecrets(t *testing.T) {
 	opts := options.DefaultClient
-	opts.Nonce = "test-nonce"
+	opts.Nonce = testNonce
 	opts.NoServer = true
 
 	client := NewClient(opts)

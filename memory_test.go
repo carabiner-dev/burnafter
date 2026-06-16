@@ -14,6 +14,9 @@ import (
 	"github.com/carabiner-dev/burnafter/secrets"
 )
 
+// testNonce is the key-derivation nonce shared by the package's tests.
+const testNonce = "test-nonce"
+
 // fakeStorage is an in-process secrets.Storage used to exercise the keyring
 // code path on any platform (the real kernel keyring is Linux-only).
 type fakeStorage struct {
@@ -43,7 +46,7 @@ func (f *fakeStorage) Delete(_ context.Context, name string) error {
 func newInMemoryClient() *Client {
 	opts := *options.DefaultClient
 	opts.InMemory = true
-	opts.Nonce = "test-nonce"
+	opts.Nonce = testNonce
 	return NewClient(&opts)
 }
 

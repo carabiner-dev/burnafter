@@ -75,9 +75,13 @@ func (k *keyringStore) put(ctx context.Context, name string, s memSecret) error 
 
 func (k *keyringStore) get(ctx context.Context, name string) (memSecret, bool, error) {
 	payload, err := k.storage.Get(ctx, name)
-	if err != nil || payload == nil {
-		// Any retrieval failure (including "not found") is treated as a miss; a
-		// cache miss just triggers a fresh exchange.
+	if err != nil {
+		// A retrieval failure (including "not found", which the kernel keyring
+		// reports as an error) is surfaced to the caller, which treats it as a
+		// cache miss and falls back to a fresh exchange.
+		return memSecret{}, false, err
+	}
+	if payload == nil {
 		return memSecret{}, false, nil
 	}
 	s, err := unmarshalMemSecret(payload.EncryptedData)
