@@ -89,13 +89,14 @@ func (c *Client) Connect(ctx context.Context) error {
 	if err := c.startServer(ctx); err != nil {
 		// Starting the embedded server can fail in restricted environments
 		// (e.g. sandboxes that block memfd_create or exec, such as some
-		// containerized runtimes). This is not fatal: fall back to encrypted
-		// file storage. Callers that require the server must set NoFallbackMode.
-		clog.WarnContextf(ctx, "could not start burnafter server, using fallback storage: %v", err)
+		// containerized runtimes). By default this is not fatal: fall back to
+		// encrypted file storage. Callers that require the server (and want a
+		// hard failure instead of degrading) set NoFallbackMode.
 		c.serverStartFailed = true
 		if c.options.NoFallbackMode {
-			return fmt.Errorf("starting server: %w", err)
+			return fmt.Errorf("%w: %w", ErrServerStartFailed, err)
 		}
+		clog.WarnContextf(ctx, "could not start burnafter server, using fallback storage: %v", err)
 		return nil
 	}
 
