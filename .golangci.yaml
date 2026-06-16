@@ -109,6 +109,15 @@ linters:
     # - wsl
     - zerologlint
 
+  exclusions:
+    rules:
+      # hack/ holds build tooling (e.g. the reproducible gzip helper) that takes
+      # trusted file paths as command-line arguments; gosec's file-path taint
+      # checks (G304/G70x) are false positives there.
+      - path: ^hack/
+        linters:
+          - gosec
+
   settings:
     dogsled:
       max-blank-identifiers: 3
