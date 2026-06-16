@@ -37,9 +37,10 @@ For a complete overview of the security model, see the
 
 #### Architecture (Server Mode)
 
-Applications wishing to store secrets simply need to use the burnafter client
-library. When secrets are stored, burnafter launches a small daemon that handles
-client authentication and secret encryption and in-memory storage:
+Applications wishing to store secrets use the burnafter client library. In server
+mode (enabled with `WithServerLauncher(embedded.Launch)`), burnafter launches a
+small daemon that handles client authentication and secret encryption and
+in-memory storage:
 
 ```mermaid
 graph TD
@@ -165,6 +166,34 @@ DB_PASS=$(burnafter get db-password)
 mysql -u user -p"$DB_PASS" mydatabase
 ```
 
+#### Storage modes
+
+A client stores secrets in one of three backends; the API (`Store`/`Get`/`Delete`)
+is identical across all of them:
+
+- **Server (default for `cmd/burnafter`)** — the embedded daemon backed by the
+  system keyring (Linux kernel keyring) or macOS Keychain. Shared across processes
+  on the same host. **Opt-in** (see below).
+- **Encrypted file fallback** (`options.NoServer`) — secrets are AES-256-GCM
+  encrypted to per-key files under the OS temp dir. Per-process, no daemon.
+- **In-memory** (`options.InMemory`) — secrets are AES-256-GCM encrypted and held
+  only in process memory: no daemon, no files, gone on restart. Ideal for a
+  long-lived daemon that just needs an ephemeral secure cache. It prefers the
+  kernel keyring (kernel memory) where available and otherwise uses an encrypted
+  heap map.
+
+##### The embedded server is opt-in
+
+The embedded server is a multi-megabyte binary compiled into your program via
+`//go:embed`. To avoid paying that size cost when you don't use server mode, it
+lives in a separate package — `github.com/carabiner-dev/burnafter/embedded` — and
+you enable it explicitly with `WithServerLauncher(embedded.Launch)`. Programs that
+only use the file or in-memory modes never import that package, so the linker
+leaves the embedded binary out of their build entirely.
+
+With no launcher configured, a client that isn't in `NoServer`/`InMemory` mode
+degrades to the encrypted file fallback instead of starting a server.
+
 #### Library Integration
 
 For Go applications, use burnafter as a library for programmatic access:
@@ -176,17 +205,21 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/carabiner-dev/burnafter"
+	"github.com/carabiner-dev/burnafter/embedded"
 	"github.com/carabiner-dev/burnafter/options"
 )
 
 func main() {
 	ctx := context.Background()
 
-	// Create a new client with default options
-	client := burnafter.NewClient(options.DefaultClient)
+	// Server mode: enable the embedded server with WithServerLauncher. Importing
+	// the embedded package is what links the embedded server binary in.
+	client := burnafter.NewClient(
+		options.DefaultClient,
+		burnafter.WithServerLauncher(embedded.Launch),
+	)
 
 	// Connect to the server (auto-starts if not running)
 	if err := client.Connect(ctx); err != nil {
@@ -195,9 +228,7 @@ func main() {
 	defer client.Close()
 
 	// Store a secret with 2-hour TTL
-	err := client.Store(ctx, "api-key", "your-secret-token",
-		options.WithTTL(7200))
-	if err != nil {
+	if err := client.Store(ctx, "api-key", "your-secret-token", options.WithTTL(7200)); err != nil {
 		log.Fatalf("Failed to store secret: %v", err)
 	}
 	fmt.Println("Secret stored successfully")
@@ -208,25 +239,40 @@ func main() {
 		log.Fatalf("Failed to get secret: %v", err)
 	}
 	fmt.Printf("Retrieved secret: %s\n", secret)
-
-	// Use the secret in your application
-	// ... your API calls, database connections, etc.
 }
+```
+
+##### In-memory mode (no server, no files)
+
+A long-lived service that just needs an ephemeral secure cache (e.g. caching
+short-lived tokens) can skip the embedded server entirely — don't import the
+`embedded` package, and set `InMemory`:
+
+```go
+opts := *options.DefaultClient
+opts.InMemory = true
+
+client := burnafter.NewClient(&opts) // no launcher → no embedded server linked in
+_ = client.Connect(ctx)              // selects kernel keyring, else encrypted heap
+_ = client.Store(ctx, "token", value, options.WithTTL(3600))
 ```
 
 **Advanced Configuration:**
 
 ```go
 // Custom client options
-client := burnafter.NewClient(&options.Client{
-	Nonce: "my-app-v1.0",  // Optional: version-specific nonce
-	Common: options.Common{
-		DefaultTTL:   2 * time.Hour,
-		Debug:        true,
-		MaxSecrets:   200,
-		MaxSecretSize: 2 * 1024 * 1024, // 2 MB
+client := burnafter.NewClient(
+	&options.Client{
+		Nonce: "my-app-v1.0", // Optional: version-specific nonce
+		Common: options.Common{
+			DefaultTTL:    2 * time.Hour,
+			Debug:         true,
+			MaxSecrets:    200,
+			MaxSecretSize: 2 * 1024 * 1024, // 2 MB
+		},
 	},
-})
+	burnafter.WithServerLauncher(embedded.Launch),
+)
 
 // Store with absolute expiration time
 expiry := time.Now().Add(24 * time.Hour).Unix()
@@ -249,7 +295,9 @@ Burnafter enforces limits to prevent resource exhaustion:
 
 ## How The Server Works
 
-1. **Auto-Start**: Client automatically starts server if it's not running
+When server mode is enabled (`WithServerLauncher(embedded.Launch)`):
+
+1. **Auto-Start**: Client automatically starts the server if it's not running
 2. **Daemon Mode**: Server detaches and runs in background
 3. **Automatic Shutdown**: Server shuts down automatically when:
    - No activity is detected for 10 minutes (inactivity timeout), OR
@@ -261,7 +309,7 @@ Burnafter enforces limits to prevent resource exhaustion:
 
 ### Requirements
 
-- Go 1.24.11+
+- Go (the version pinned in [`.go-version`](.go-version), currently 1.26.4)
 - protoc (for regenerating proto files)
 - Linux/MacOs (for `SO_PEERCRED` support)
 
