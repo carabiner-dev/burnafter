@@ -19,6 +19,7 @@ import (
 
 	pb "github.com/carabiner-dev/burnafter/internal/common"
 	"github.com/carabiner-dev/burnafter/internal/embedded"
+	isecrets "github.com/carabiner-dev/burnafter/internal/secrets"
 	"github.com/carabiner-dev/burnafter/internal/server"
 	"github.com/carabiner-dev/burnafter/options"
 )
@@ -34,6 +35,11 @@ type Client struct {
 	conn              *grpc.ClientConn
 	client            pb.BurnAfterClient
 	serverStartFailed bool // Track if server startup was attempted and failed
+
+	// mem is the ephemeral backend used when options.InMemory is set: the OS
+	// secure store (kernel keyring) when available, otherwise an in-process map.
+	// Defaults to the heap store and may be upgraded to the keyring in Connect.
+	mem secretStore
 }
 
 // NewClient creates a new client instance
@@ -45,6 +51,9 @@ func NewClient(opts *options.Client) *Client {
 
 	return &Client{
 		options: opts,
+		// Default ephemeral backend; Connect upgrades to the keyring when the
+		// platform supports it.
+		mem: newHeapStore(),
 	}
 }
 
@@ -67,6 +76,21 @@ func generateSocketPath() string {
 //
 // If NoServer option is set or server startup fails, fallback mode is used.
 func (c *Client) Connect(ctx context.Context) error {
+	// In-memory mode keeps secrets ephemeral: no server, no files. Prefer the OS
+	// secure store (kernel keyring) so secret bytes live in kernel memory rather
+	// than the process heap; fall back to the encrypted heap map (set in
+	// NewClient) when the keyring isn't available — e.g. a sandbox without
+	// keyctl, or a non-Linux host where the keyring isn't ephemeral.
+	if c.options.InMemory {
+		if ks, err := isecrets.NewKeyringStorage(ctx); err == nil {
+			c.mem = &keyringStore{storage: ks}
+			clog.FromContext(ctx).Debug("in-memory secrets: using OS kernel keyring")
+		} else {
+			clog.FromContext(ctx).Debugf("in-memory secrets: keyring unavailable, using encrypted heap: %v", err)
+		}
+		return nil
+	}
+
 	// If NoServer option is set, skip server connection
 	if c.options.NoServer {
 		return nil

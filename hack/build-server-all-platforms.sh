@@ -7,6 +7,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 EMBED_DIR="$PROJECT_DIR/internal/embedded/servers"
 
+# Pin the Go toolchain to the version in .go-version so the server binaries are
+# byte-reproducible regardless of the developer's ambient Go. CI verifies that
+# .go-version tracks the latest stable Go release, so local builds and CI build
+# with the same toolchain.
+GO_VERSION="$(tr -d '[:space:]' < "$PROJECT_DIR/.go-version")"
+export GOTOOLCHAIN="go${GO_VERSION}"
+echo "Using Go toolchain: ${GOTOOLCHAIN}"
+
 # Platforms to build for
 PLATFORMS=(
     "linux/amd64"
@@ -36,10 +44,12 @@ for platform in "${PLATFORMS[@]}"; do
         -ldflags="-s -w" \
         "$PROJECT_DIR/cmd/burnafter-server"
 
-    # Compress with gzip. Make sure to use -n as we need to 
-    # make the gzip output deterministic.
+    # Compress with Go's compress/gzip (via hack/gzip) rather than the system
+    # gzip: its DEFLATE output is identical on every host for a given Go version,
+    # whereas the system gzip differs (e.g. BSD/Apple vs GNU), which broke the
+    # reproducibility check.
     echo "Compressing burnafter-server for ${GOOS}/${GOARCH}..."
-    gzip -n -9 -f "$output_path"
+    go run "$PROJECT_DIR/hack/gzip" "$output_path"
 
     # Show size
     size=$(du -h "${output_path}.gz" | cut -f1)
