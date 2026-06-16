@@ -11,9 +11,9 @@ import (
 // Delete removes a secret from fallback encrypted file storage
 // Note: Delete is only supported in fallback mode currently
 func (c *Client) Delete(ctx context.Context, name string) error {
-	// In-memory mode removes from this process's encrypted map.
+	// In-memory mode removes from the ephemeral backend.
 	if c.useMemory() {
-		c.deleteFromMemory(name)
+		c.deleteFromMemory(ctx, name)
 		return nil
 	}
 

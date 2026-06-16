@@ -13,9 +13,9 @@ import (
 
 // Get retrieves a secret from the server or fallback encrypted file storage
 func (c *Client) Get(ctx context.Context, name string) (string, error) {
-	// In-memory mode reads from this process's encrypted map.
+	// In-memory mode reads from the ephemeral backend.
 	if c.useMemory() {
-		secret, err := c.getFromMemory(name)
+		secret, err := c.getFromMemory(ctx, name)
 		if err != nil {
 			return "", err
 		}

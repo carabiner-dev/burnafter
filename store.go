@@ -34,9 +34,9 @@ func (c *Client) Store(ctx context.Context, name, secret string, funcs ...option
 		}
 	}
 
-	// In-memory mode keeps the (encrypted) secret in this process only.
+	// In-memory mode keeps the (encrypted) secret ephemeral.
 	if c.useMemory() {
-		return c.storeInMemory(name, []byte(secret), c.storeExpiry(opts))
+		return c.storeInMemory(ctx, name, []byte(secret), c.storeExpiry(opts))
 	}
 
 	// Use fallback storage if server is not available
