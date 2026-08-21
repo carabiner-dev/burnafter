@@ -51,7 +51,6 @@ func (c *peerCredentials) ServerHandshake(rawConn net.Conn) (net.Conn, credentia
 func (c *peerCredentials) Info() credentials.ProtocolInfo {
 	return credentials.ProtocolInfo{
 		SecurityProtocol: "unix",
-		SecurityVersion:  "1.0",
 	}
 }
 
