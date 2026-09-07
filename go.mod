@@ -1,11 +1,11 @@
 module github.com/carabiner-dev/burnafter
 
-go 1.25.8
+go 1.26.0
 
 require (
 	github.com/chainguard-dev/clog v1.8.1
 	github.com/keybase/go-keychain v0.0.1
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/sys v0.47.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
